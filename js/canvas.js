@@ -69,6 +69,9 @@ class GridCanvas {
         // Save project button
         document.getElementById('saveProjectBtn').addEventListener('click', () => this.saveCurrentProject());
         
+        // Minimize panel buttons
+        this.initMinimizeButtons();
+        
         // Canvas drop zone for placing blocks
         this.gridCanvas.addEventListener('dragover', (e) => this.onCanvasDragOver(e));
         this.gridCanvas.addEventListener('drop', (e) => this.onCanvasDrop(e));
@@ -92,6 +95,75 @@ class GridCanvas {
         
         // Initial output
         this.updateOutput();
+        
+        // Restore minimized states
+        this.restoreMinimizedStates();
+    }
+    
+    // Initialize minimize/expand buttons for panels
+    initMinimizeButtons() {
+        // Projects panel
+        const minimizeProjectsBtn = document.getElementById('minimizeProjectsBtn');
+        const projectsPanel = document.getElementById('projectsPanel');
+        if (minimizeProjectsBtn && projectsPanel) {
+            minimizeProjectsBtn.addEventListener('click', () => {
+                projectsPanel.classList.toggle('minimized');
+                this.saveMinimizedState('projects', projectsPanel.classList.contains('minimized'));
+            });
+        }
+        
+        // Saved Blocks panel
+        const minimizeSavedBlocksBtn = document.getElementById('minimizeSavedBlocksBtn');
+        const savedBlocksPanel = document.getElementById('savedBlocksPanel');
+        if (minimizeSavedBlocksBtn && savedBlocksPanel) {
+            minimizeSavedBlocksBtn.addEventListener('click', () => {
+                savedBlocksPanel.classList.toggle('minimized');
+                this.saveMinimizedState('savedBlocks', savedBlocksPanel.classList.contains('minimized'));
+            });
+        }
+        
+        // Output panel
+        const minimizeOutputBtn = document.getElementById('minimizeOutputBtn');
+        const outputPanel = document.getElementById('outputPanel');
+        if (minimizeOutputBtn && outputPanel) {
+            minimizeOutputBtn.addEventListener('click', () => {
+                outputPanel.classList.toggle('minimized');
+                this.saveMinimizedState('output', outputPanel.classList.contains('minimized'));
+            });
+        }
+    }
+    
+    // Save minimized state to localStorage
+    saveMinimizedState(panel, isMinimized) {
+        try {
+            const states = JSON.parse(localStorage.getItem('codeblocks_panel_states') || '{}');
+            states[panel] = isMinimized;
+            localStorage.setItem('codeblocks_panel_states', JSON.stringify(states));
+        } catch (e) {
+            console.warn('Failed to save panel state:', e);
+        }
+    }
+    
+    // Restore minimized states from localStorage
+    restoreMinimizedStates() {
+        try {
+            const states = JSON.parse(localStorage.getItem('codeblocks_panel_states') || '{}');
+            
+            if (states.projects) {
+                const projectsPanel = document.getElementById('projectsPanel');
+                if (projectsPanel) projectsPanel.classList.add('minimized');
+            }
+            if (states.savedBlocks) {
+                const savedBlocksPanel = document.getElementById('savedBlocksPanel');
+                if (savedBlocksPanel) savedBlocksPanel.classList.add('minimized');
+            }
+            if (states.output) {
+                const outputPanel = document.getElementById('outputPanel');
+                if (outputPanel) outputPanel.classList.add('minimized');
+            }
+        } catch (e) {
+            console.warn('Failed to restore panel states:', e);
+        }
     }
     
     // Load saved blocks from localStorage
@@ -138,7 +210,7 @@ class GridCanvas {
         
         el.innerHTML = `
             <span class="sidebar-block-type">${savedBlock.type}</span>
-            <span class="sidebar-block-name">${displayName}</span>
+            <span class="sidebar-block-name" title="${displayName}">${displayName}</span>
         `;
         
         el.addEventListener('dragstart', (e) => {
@@ -269,7 +341,7 @@ class GridCanvas {
         blockEl.innerHTML = `
             <div class="placed-block-header">
                 <span class="placed-block-type">${savedBlock.type}</span>
-                <span class="placed-block-name">${displayName}</span>
+                <span class="placed-block-name" title="${displayName}">${displayName}</span>
                 <div class="placed-block-actions">
                     <button class="placed-block-connect" title="Connect to another block">↗</button>
                     <button class="placed-block-delete" title="Delete">×</button>

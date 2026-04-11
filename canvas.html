@@ -26,10 +26,13 @@
         <!-- Main Canvas Area -->
         <div class="canvas-workspace">
             <!-- Projects Sidebar -->
-            <aside class="canvas-projects-panel">
+            <aside class="canvas-projects-panel" id="projectsPanel">
                 <div class="canvas-projects-header">
                     <h3>📁 Projects</h3>
-                    <button class="btn-save-project" id="saveProjectBtn" title="Save current canvas as project">+ Save</button>
+                    <div class="panel-header-actions">
+                        <button class="btn-minimize-panel" id="minimizeProjectsBtn" title="Minimize Projects">−</button>
+                        <button class="btn-save-project" id="saveProjectBtn" title="Save current canvas as project">+ Save</button>
+                    </div>
                 </div>
                 <div class="canvas-projects-content" id="canvasProjectsContent">
                     <div class="canvas-projects-empty">
@@ -40,10 +43,13 @@
             </aside>
 
             <!-- Sidebar with Saved Blocks -->
-            <aside class="canvas-sidebar-panel">
+            <aside class="canvas-sidebar-panel" id="savedBlocksPanel">
                 <div class="canvas-sidebar-header">
                     <h3>💾 Saved Blocks</h3>
-                    <span class="block-count" id="blockCount">0 blocks</span>
+                    <div class="panel-header-actions">
+                        <button class="btn-minimize-panel" id="minimizeSavedBlocksBtn" title="Minimize Saved Blocks">−</button>
+                        <span class="block-count" id="blockCount">0 blocks</span>
+                    </div>
                 </div>
                 <div class="canvas-sidebar-content" id="canvasSidebarContent">
                     <div class="canvas-sidebar-empty">
@@ -83,10 +89,13 @@
             </div>
 
             <!-- Output Panel -->
-            <aside class="canvas-output-panel">
+            <aside class="canvas-output-panel" id="outputPanel">
                 <div class="canvas-output-header">
                     <h3>📄 System JSON</h3>
-                    <button class="btn-copy" id="copyOutputBtn">Copy</button>
+                    <div class="panel-header-actions">
+                        <button class="btn-minimize-panel" id="minimizeOutputBtn" title="Minimize Output">−</button>
+                        <button class="btn-copy" id="copyOutputBtn">Copy</button>
+                    </div>
                 </div>
                 <pre id="canvasOutput" class="canvas-output-content"></pre>
             </aside>

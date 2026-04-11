@@ -108,6 +108,72 @@
     font-weight: 500;
 }
 
+/* Panel Header Actions */
+.panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Minimize Button */
+.btn-minimize-panel {
+    background: transparent;
+    border: 1px solid #444;
+    color: #888;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.btn-minimize-panel:hover {
+    background: rgba(255,255,255,0.1);
+    border-color: #666;
+    color: #fff;
+}
+
+/* Minimized Panel States */
+.canvas-projects-panel.minimized,
+.canvas-sidebar-panel.minimized,
+.canvas-output-panel.minimized {
+    width: 40px !important;
+    min-width: 40px !important;
+}
+
+.canvas-projects-panel.minimized .canvas-projects-content,
+.canvas-projects-panel.minimized .btn-save-project,
+.canvas-sidebar-panel.minimized .canvas-sidebar-content,
+.canvas-sidebar-panel.minimized .block-count,
+.canvas-output-panel.minimized .canvas-output-content,
+.canvas-output-panel.minimized .btn-copy {
+    display: none !important;
+}
+
+.canvas-projects-panel.minimized .canvas-projects-header,
+.canvas-sidebar-panel.minimized .canvas-sidebar-header,
+.canvas-output-panel.minimized .canvas-output-header {
+    padding: 12px 8px;
+    justify-content: center;
+}
+
+.canvas-projects-panel.minimized .canvas-projects-header h3,
+.canvas-sidebar-panel.minimized .canvas-sidebar-header h3,
+.canvas-output-panel.minimized .canvas-output-header h3 {
+    display: none;
+}
+
+.canvas-projects-panel.minimized .btn-minimize-panel,
+.canvas-sidebar-panel.minimized .btn-minimize-panel,
+.canvas-output-panel.minimized .btn-minimize-panel {
+    transform: rotate(180deg);
+}
+
 .btn-save-project {
     background: #16c79a;
     color: white;
@@ -356,9 +422,10 @@
     color: #888;
     border-bottom: 1px solid #333;
     margin-bottom: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    max-width: 300px;
+    line-height: 1.4;
 }
 
 .arrow-menu-item {
@@ -565,15 +632,27 @@
     font-size: 14px;
     font-weight: 500;
     color: #fff;
-    white-space: nowrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.3;
+    max-height: 2.6em;
     overflow: hidden;
-    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.sidebar-block-name:hover {
+    max-height: none;
+    -webkit-line-clamp: unset;
+    overflow: visible;
 }
 
 /* Placed Blocks on Grid Canvas */
 .placed-block {
     position: absolute;
-    width: 200px;
+    min-width: 200px;
+    max-width: 350px;
     background: #1a1a2e;
     border-radius: 8px;
     border: 1px solid #444;
@@ -642,9 +721,20 @@
     font-weight: 500;
     color: #fff;
     flex: 1;
-    white-space: nowrap;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.3;
+    max-height: 2.6em;
     overflow: hidden;
-    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.placed-block-name:hover {
+    max-height: none;
+    -webkit-line-clamp: unset;
+    overflow: visible;
 }
 
 .placed-block-actions {
@@ -791,6 +881,8 @@
 
 .modal-content p strong {
     color: #fff;
+    word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 .modal-content input {
