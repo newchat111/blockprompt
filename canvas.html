@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeBlocks - Grid Canvas</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/canvas.css">
+</head>
+<body>
+    <div class="canvas-page">
+        <!-- Header -->
+        <header class="canvas-header">
+            <div class="canvas-header-left">
+                <button class="btn btn-back" id="backBtn" title="Back to Editor">← Back</button>
+                <h1>🖼️ Grid Canvas</h1>
+            </div>
+            <div class="canvas-header-center">
+                <span class="canvas-hint-text" id="canvasHint">Drag blocks from sidebar to place • Click block to connect</span>
+            </div>
+            <div class="canvas-header-right">
+                <button class="btn btn-clear-canvas" id="clearCanvasBtn">Clear Canvas</button>
+            </div>
+        </header>
+
+        <!-- Main Canvas Area -->
+        <div class="canvas-workspace">
+            <!-- Projects Sidebar -->
+            <aside class="canvas-projects-panel">
+                <div class="canvas-projects-header">
+                    <h3>📁 Projects</h3>
+                    <button class="btn-save-project" id="saveProjectBtn" title="Save current canvas as project">+ Save</button>
+                </div>
+                <div class="canvas-projects-content" id="canvasProjectsContent">
+                    <div class="canvas-projects-empty">
+                        No saved projects<br>
+                        <small>Save your canvas layout here</small>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Sidebar with Saved Blocks -->
+            <aside class="canvas-sidebar-panel">
+                <div class="canvas-sidebar-header">
+                    <h3>💾 Saved Blocks</h3>
+                    <span class="block-count" id="blockCount">0 blocks</span>
+                </div>
+                <div class="canvas-sidebar-content" id="canvasSidebarContent">
+                    <div class="canvas-sidebar-empty">
+                        No saved blocks<br>
+                        <small>Save blocks from the main editor</small>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Grid Canvas -->
+            <div class="grid-canvas-container">
+                <div id="gridCanvas" class="grid-canvas">
+                    <!-- SVG Layer for arrows -->
+                    <svg id="arrowLayer" class="arrow-layer">
+                        <defs>
+                            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                <polygon points="0 0, 10 3.5, 0 7" fill="#4a90d9" />
+                            </marker>
+                        </defs>
+                    </svg>
+                    
+                    <!-- Blocks will be placed here -->
+                    <div class="canvas-placeholder">
+                        <div class="placeholder-icon">📦</div>
+                        <div>Drag blocks here to place them</div>
+                        <small>Click a block to start connecting</small>
+                    </div>
+                </div>
+
+                <!-- Delete Zone -->
+                <div class="delete-zone" id="deleteZone">
+                    <div class="delete-zone-content">
+                        <span class="delete-icon">🗑️</span>
+                        <span class="delete-text">Drag here to delete</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Output Panel -->
+            <aside class="canvas-output-panel">
+                <div class="canvas-output-header">
+                    <h3>📄 System JSON</h3>
+                    <button class="btn-copy" id="copyOutputBtn">Copy</button>
+                </div>
+                <pre id="canvasOutput" class="canvas-output-content"></pre>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Relationship Modal -->
+    <div id="relationshipModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>Define Relationship</h3>
+            <p>From: <strong id="fromBlockName">Block A</strong> → To: <strong id="toBlockName">Block B</strong></p>
+            <input type="text" id="relationshipInput" placeholder="e.g., calls, extends, uses, depends on..." autofocus>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" id="cancelRelationship">Cancel</button>
+                <button class="btn btn-primary" id="confirmRelationship">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/canvas.js?v=2"></script>
+</body>
+</html>

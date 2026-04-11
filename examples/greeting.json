@@ -1,0 +1,23 @@
+{
+  "name": "Greeting Program",
+  "description": "A simple program that asks for the user's name and greets them",
+  "blocks": [
+    {
+      "type": "when_start",
+      "nested": [
+        {
+          "type": "say",
+          "values": { "message": "Hello!", "seconds": "2" }
+        },
+        {
+          "type": "ask",
+          "values": { "question": "What's your name?" }
+        },
+        {
+          "type": "say",
+          "values": { "message": "Nice to meet you!", "seconds": "2" }
+        }
+      ]
+    }
+  ]
+}
