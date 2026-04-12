@@ -16,7 +16,13 @@
                 <h1>🖼️ Grid Canvas</h1>
             </div>
             <div class="canvas-header-center">
-                <span class="canvas-hint-text" id="canvasHint">Drag blocks from sidebar to place • Click block to connect</span>
+                <div class="zoom-controls">
+                    <button class="btn btn-zoom" id="zoomOutBtn" title="Zoom Out">−</button>
+                    <span class="zoom-level" id="zoomLevel">100%</span>
+                    <button class="btn btn-zoom" id="zoomInBtn" title="Zoom In">+</button>
+                    <button class="btn btn-zoom-reset" id="zoomResetBtn" title="Reset Zoom">Reset</button>
+                </div>
+                <span class="canvas-hint-text" id="canvasHint">Drag blocks from sidebar to place • Click block to connect • Ctrl+Drag to select multiple</span>
             </div>
             <div class="canvas-header-right">
                 <button class="btn btn-clear-canvas" id="clearCanvasBtn">Clear Canvas</button>
@@ -62,28 +68,34 @@
             <!-- Grid Canvas -->
             <div class="grid-canvas-container">
                 <div id="gridCanvas" class="grid-canvas">
-                    <!-- SVG Layer for arrows -->
-                    <svg id="arrowLayer" class="arrow-layer">
-                        <defs>
-                            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                                <polygon points="0 0, 10 3.5, 0 7" fill="#4a90d9" />
-                            </marker>
-                        </defs>
-                    </svg>
-                    
-                    <!-- Blocks will be placed here -->
-                    <div class="canvas-placeholder">
-                        <div class="placeholder-icon">📦</div>
-                        <div>Drag blocks here to place them</div>
-                        <small>Click a block to start connecting</small>
+                    <!-- Canvas content wrapper for zooming -->
+                    <div id="canvasContent" class="canvas-content">
+                        <!-- SVG Layer for arrows -->
+                        <svg id="arrowLayer" class="arrow-layer">
+                            <defs>
+                                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                    <polygon points="0 0, 10 3.5, 0 7" fill="#4a90d9" />
+                                </marker>
+                            </defs>
+                        </svg>
+                        
+                        <!-- Blocks will be placed here -->
+                        <div class="canvas-placeholder">
+                            <div class="placeholder-icon">📦</div>
+                            <div>Drag blocks here to place them</div>
+                            <small>Click a block to start connecting</small>
+                        </div>
                     </div>
+                    
+                    <!-- Selection box for multi-select -->
+                    <div id="selectionBox" class="selection-box hidden"></div>
                 </div>
 
                 <!-- Delete Zone -->
                 <div class="delete-zone" id="deleteZone">
                     <div class="delete-zone-content">
                         <span class="delete-icon">🗑️</span>
-                        <span class="delete-text">Drag here to delete</span>
+                        <span class="delete-text">Drag blocks or selection here to delete</span>
                     </div>
                 </div>
             </div>

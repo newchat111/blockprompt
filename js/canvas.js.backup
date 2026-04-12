@@ -50,7 +50,6 @@ class GridCanvas {
         this.isSelecting = false;
         this.selectStart = { x: 0, y: 0 };
         this.selectedBlocks = new Set();
-        this.selectedConnections = new Set(); // Track selected connections
         this.isDraggingSelection = false;
         this.selectionDragStart = { x: 0, y: 0 };
         this.selectionInitialPositions = new Map();
@@ -487,7 +486,6 @@ class GridCanvas {
     }
     
     clearSelection() {
-        // Clear block selection
         this.selectedBlocks.forEach(blockId => {
             const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
             if (blockEl) {
@@ -495,28 +493,6 @@ class GridCanvas {
             }
         });
         this.selectedBlocks.clear();
-        
-        // Clear connection selection
-        this.selectedConnections.clear();
-        this.renderArrows(); // Re-render to remove selection highlight
-    }
-    
-    selectConnection(connectionId) {
-        this.selectedConnections.add(connectionId);
-        this.renderArrows(); // Re-render to show selection highlight
-    }
-    
-    deselectConnection(connectionId) {
-        this.selectedConnections.delete(connectionId);
-        this.renderArrows(); // Re-render to remove selection highlight
-    }
-    
-    toggleConnectionSelection(connectionId) {
-        if (this.selectedConnections.has(connectionId)) {
-            this.deselectConnection(connectionId);
-        } else {
-            this.selectConnection(connectionId);
-        }
     }
     
     saveSelectionInitialPositions() {
@@ -553,21 +529,10 @@ class GridCanvas {
             this.paste();
         }
         
-        // Delete selected blocks/connections
-        if ((e.key === 'Delete' || e.key === 'Backspace') && 
-            (this.selectedBlocks.size > 0 || this.selectedConnections.size > 0)) {
+        // Delete selected blocks
+        if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedBlocks.size > 0) {
             e.preventDefault();
-            this.deleteSelected();
-        }
-        
-        // Edit selected connection: Enter
-        if (e.key === 'Enter' && this.selectedConnections.size === 1) {
-            e.preventDefault();
-            const connId = Array.from(this.selectedConnections)[0];
-            const connection = this.connections.find(c => c.id === connId);
-            if (connection) {
-                this.editConnection(connection);
-            }
+            this.deleteSelectedBlocks();
         }
         
         // Select All: Ctrl/Cmd + A
@@ -591,61 +556,38 @@ class GridCanvas {
     }
     
     copySelected() {
-        // Support copying blocks, connections, or both
-        const hasBlocks = this.selectedBlocks.size > 0;
-        const hasConnections = this.selectedConnections.size > 0;
-        
-        if (!hasBlocks && !hasConnections) return;
+        if (this.selectedBlocks.size === 0) return;
         
         const selectedBlockIds = Array.from(this.selectedBlocks);
         const selectedData = [];
         
-        // Copy selected blocks
         selectedBlockIds.forEach(blockId => {
             const placedBlock = this.placedBlocks.find(b => b.id === blockId);
             if (placedBlock) {
                 selectedData.push({
-                    id: blockId,
+                    id: blockId, // Keep original ID for connection mapping
                     type: placedBlock.type,
-                    data: JSON.parse(JSON.stringify(placedBlock.data)), // Deep copy
+                    data: placedBlock.data,
                     x: placedBlock.x,
                     y: placedBlock.y
                 });
             }
         });
         
-        // Find connections to copy:
-        // 1. Selected connections (explicitly clicked)
-        // 2. Internal connections between selected blocks
-        const connectionsToCopy = new Map(); // Use Map to avoid duplicates
-        
-        // Add explicitly selected connections
-        this.selectedConnections.forEach(connId => {
-            const conn = this.connections.find(c => c.id === connId);
-            if (conn) {
-                connectionsToCopy.set(connId, {
-                    from: conn.from,
-                    to: conn.to,
-                    relationship: conn.relationship
-                });
-            }
-        });
-        
-        // Add internal connections between selected blocks
+        // Find connections between selected blocks
+        const selectedConnections = [];
         this.connections.forEach(conn => {
             const fromSelected = selectedBlockIds.includes(conn.from);
             const toSelected = selectedBlockIds.includes(conn.to);
             
-            if (fromSelected && toSelected && !connectionsToCopy.has(conn.id)) {
-                connectionsToCopy.set(conn.id, {
+            if (fromSelected && toSelected) {
+                selectedConnections.push({
                     from: conn.from,
                     to: conn.to,
-                    relationship: conn.relationship
+                    label: conn.label
                 });
             }
         });
-        
-        const selectedConnections = Array.from(connectionsToCopy.values());
         
         // Calculate offset for paste (center of selected blocks)
         const bounds = this.getSelectionBounds(selectedData);
@@ -659,10 +601,9 @@ class GridCanvas {
         this.pasteCount = 0;
         
         // Visual feedback
-        const blockText = selectedData.length > 0 ? `${selectedData.length} block${selectedData.length > 1 ? 's' : ''}` : '';
-        const connText = selectedConnections.length > 0 ? `${selectedConnections.length} connection${selectedConnections.length > 1 ? 's' : ''}` : '';
-        const separator = blockText && connText ? ' and ' : '';
-        this.showToast(`Copied ${blockText}${separator}${connText}`);
+        const connCount = selectedConnections.length;
+        const connText = connCount > 0 ? ` and ${connCount} connection${connCount > 1 ? 's' : ''}` : '';
+        this.showToast(`Copied ${selectedData.length} block${selectedData.length > 1 ? 's' : ''}${connText}`);
     }
     
     paste() {
@@ -715,7 +656,7 @@ class GridCanvas {
                 const newToId = idMap.get(conn.to);
                 
                 if (newFromId && newToId) {
-                    this.createConnection(newFromId, newToId, conn.relationship);
+                    this.createConnection(newFromId, newToId, conn.label);
                     connCount++;
                 }
             });
@@ -748,42 +689,18 @@ class GridCanvas {
         };
     }
     
-    deleteSelected() {
-        const hasBlocks = this.selectedBlocks.size > 0;
-        const hasConnections = this.selectedConnections.size > 0;
-        
-        if (!hasBlocks && !hasConnections) return;
+    deleteSelectedBlocks() {
+        if (this.selectedBlocks.size === 0) return;
         
         this.pushUndoState();
         
-        // Delete selected connections first
-        let deletedConnections = 0;
-        this.selectedConnections.forEach(connId => {
-            this.deleteConnection(connId);
-            deletedConnections++;
-        });
-        this.selectedConnections.clear();
-        
-        // Delete selected blocks
-        let deletedBlocks = 0;
+        const count = this.selectedBlocks.size;
         this.selectedBlocks.forEach(blockId => {
-            this.deletePlacedBlock(blockId, false);
-            deletedBlocks++;
+            this.deletePlacedBlock(blockId, false); // Don't save undo for each individual delete
         });
         this.selectedBlocks.clear();
         
-        // Show feedback
-        const blockText = deletedBlocks > 0 ? `${deletedBlocks} block${deletedBlocks > 1 ? 's' : ''}` : '';
-        const connText = deletedConnections > 0 ? `${deletedConnections} connection${deletedConnections > 1 ? 's' : ''}` : '';
-        const separator = blockText && connText ? ' and ' : '';
-        this.showToast(`Deleted ${blockText}${separator}${connText}`);
-    }
-    
-    deleteConnection(connectionId) {
-        this.connections = this.connections.filter(c => c.id !== connectionId);
-        this.saveConnections();
-        this.renderArrows();
-        this.updateOutput();
+        this.showToast(`Deleted ${count} block${count > 1 ? 's' : ''}`);
     }
     
     selectAll() {
@@ -970,20 +887,6 @@ class GridCanvas {
             const dx = (moveEvent.clientX - this.selectionDragStart.x) / this.zoomLevel;
             const dy = (moveEvent.clientY - this.selectionDragStart.y) / this.zoomLevel;
             
-            // Check if hovering over delete zone for visual feedback
-            const deleteZoneRect = this.deleteZone.getBoundingClientRect();
-            const isOverDeleteZone = moveEvent.clientY >= deleteZoneRect.top && 
-                                     moveEvent.clientX >= deleteZoneRect.left && 
-                                     moveEvent.clientX <= deleteZoneRect.right;
-            
-            if (isOverDeleteZone) {
-                this.deleteZone.classList.add('drag-over');
-                document.body.classList.add('delete-zone-active');
-            } else {
-                this.deleteZone.classList.remove('drag-over');
-                document.body.classList.remove('delete-zone-active');
-            }
-            
             this.selectedBlocks.forEach(blockId => {
                 const placedBlock = this.placedBlocks.find(b => b.id === blockId);
                 const initialPos = this.selectionInitialPositions.get(blockId);
@@ -1008,7 +911,7 @@ class GridCanvas {
             // Check if dropped on delete zone
             const deleteZoneRect = this.deleteZone.getBoundingClientRect();
             if (upEvent.clientY >= deleteZoneRect.top) {
-                this.deleteSelected();
+                this.deleteSelectedBlocks();
             } else {
                 // Snap to grid
                 this.selectedBlocks.forEach(blockId => {
@@ -1025,7 +928,7 @@ class GridCanvas {
                 this.updateOutput();
             }
             
-            // Remove dragging class and cleanup highlight
+            // Remove dragging class
             this.selectedBlocks.forEach(blockId => {
                 const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
                 if (blockEl) {
@@ -1034,8 +937,6 @@ class GridCanvas {
             });
             
             this.isDraggingSelection = false;
-            this.deleteZone.classList.remove('drag-over');
-            document.body.classList.remove('delete-zone-active');
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
         };
@@ -1404,18 +1305,6 @@ class GridCanvas {
             this.hideArrowMenu();
         }
         
-        // Check if clicking on empty canvas area (not on a block or connection)
-        const isBlock = e.target.closest('.placed-block');
-        const isConnection = e.target.closest('.connection-group');
-        const isArrowMenu = e.target.closest('.arrow-menu');
-        
-        // If we're in connecting mode and clicked on empty space, cancel connection
-        if (this.connectingFrom && !isBlock && !isConnection && !isArrowMenu) {
-            this.cancelConnection();
-            return;
-        }
-        
-        // Original behavior: cancel connection when clicking canvas background
         if (e.target === this.gridCanvas || e.target.classList.contains('canvas-placeholder')) {
             this.cancelConnection();
         }
@@ -1642,24 +1531,13 @@ class GridCanvas {
         group.dataset.connectionId = connection.id;
         group.style.cursor = 'pointer';
         
-        // Calculate path
+        // Create invisible wider path for easier clicking
+        const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         const controlX = (startX + endX) / 2;
         const pathD = `M ${startX} ${startY} Q ${controlX} ${startY} ${(startX + endX) / 2} ${(startY + endY) / 2} Q ${controlX} ${endY} ${endX} ${endY}`;
-        
-        // Create a wider invisible background path for easier clicking/hovering
-        const bgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        bgPath.setAttribute('d', pathD);
-        bgPath.setAttribute('stroke', 'transparent');
-        bgPath.setAttribute('stroke-width', '80'); // 2x wider for easier selection
-        bgPath.setAttribute('fill', 'none');
-        bgPath.style.pointerEvents = 'stroke';
-        bgPath.style.cursor = 'pointer';
-        
-        // Create invisible hit path for clicking (medium width)
-        const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         hitPath.setAttribute('d', pathD);
         hitPath.setAttribute('stroke', 'transparent');
-        hitPath.setAttribute('stroke-width', '50'); // 2x wider
+        hitPath.setAttribute('stroke-width', '20');
         hitPath.setAttribute('fill', 'none');
         hitPath.style.pointerEvents = 'stroke';
         
@@ -1672,30 +1550,14 @@ class GridCanvas {
         path.setAttribute('marker-end', 'url(#arrowhead)');
         path.style.pointerEvents = 'none';
         
-        group.appendChild(bgPath);   // Widest - for easy hovering
-        group.appendChild(hitPath);  // Medium - for clicking
-        group.appendChild(path);     // Visible line
+        group.appendChild(hitPath);
+        group.appendChild(path);
         
-        // Click handler - select connection or show menu
+        // Click handler
         group.addEventListener('click', (e) => {
             e.stopPropagation();
-            
-            // Toggle selection with Ctrl/Cmd, otherwise just show menu
-            if (e.ctrlKey || e.metaKey) {
-                this.toggleConnectionSelection(connection.id);
-            } else {
-                // Clear block selection when clicking connection
-                this.clearSelection();
-                this.showArrowMenu(connection, e);
-            }
+            this.showArrowMenu(connection, e);
         });
-        
-        // Apply selected state
-        if (this.selectedConnections.has(connection.id)) {
-            group.classList.add('selected');
-            path.setAttribute('stroke', '#f59e0b'); // Orange for selected
-            path.setAttribute('stroke-width', '3');
-        }
         
         this.arrowLayer.appendChild(group);
         
@@ -1765,41 +1627,25 @@ class GridCanvas {
     
     onDeleteZoneDragOver(e) {
         e.preventDefault();
-        // Accept drops from canvas blocks or when items are selected
-        if (this.dragSource === 'canvas' || this.selectedBlocks.size > 0 || this.selectedConnections.size > 0) {
+        if (this.dragSource === 'canvas') {
             e.dataTransfer.dropEffect = 'move';
             this.deleteZone.classList.add('drag-over');
-            document.body.classList.add('delete-zone-active');
         }
     }
     
     onDeleteZoneDragLeave(e) {
         this.deleteZone.classList.remove('drag-over');
-        document.body.classList.remove('delete-zone-active');
     }
     
     onDeleteZoneDrop(e) {
         e.preventDefault();
         this.deleteZone.classList.remove('drag-over');
-        document.body.classList.remove('delete-zone-active');
         
         const source = e.dataTransfer.getData('source');
         const blockId = e.dataTransfer.getData('blockId');
-        const connectionId = e.dataTransfer.getData('connectionId');
-        
-        this.pushUndoState();
         
         if (source === 'canvas' && blockId) {
-            // Delete a single dragged block
-            this.deletePlacedBlock(blockId, false);
-            this.showToast('Block deleted');
-        } else if (source === 'canvas' && connectionId) {
-            // Delete a single dragged connection
-            this.deleteConnection(connectionId);
-            this.showToast('Connection deleted');
-        } else if (this.selectedBlocks.size > 0 || this.selectedConnections.size > 0) {
-            // Delete all selected items
-            this.deleteSelected();
+            this.deletePlacedBlock(blockId);
         }
         
         this.draggedBlock = null;

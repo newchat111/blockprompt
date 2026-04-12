@@ -49,11 +49,69 @@
 .canvas-header-center {
     flex: 1;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Zoom Controls */
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #0f0f1a;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid #333;
+}
+
+.btn-zoom {
+    background: #333;
+    color: white;
+    border: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.btn-zoom:hover {
+    background: #444;
+}
+
+.btn-zoom-reset {
+    background: #444;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s;
+}
+
+.btn-zoom-reset:hover {
+    background: #555;
+}
+
+.zoom-level {
+    color: #fff;
+    font-size: 12px;
+    min-width: 45px;
+    text-align: center;
+    font-family: 'Consolas', monospace;
 }
 
 .canvas-hint-text {
     color: #888;
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .canvas-hint-text.connecting {
@@ -323,6 +381,29 @@
     color: #666;
 }
 
+/* Toast Notifications */
+@keyframes toast-appear {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+@keyframes toast-disappear {
+    from {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+    }
+}
+
 /* Grid Canvas Container */
 .grid-canvas-container {
     flex: 1;
@@ -343,6 +424,34 @@
     background-size: 40px 40px;
     overflow: auto;
     min-height: 0;
+}
+
+/* Canvas Content Wrapper for Zoom */
+.canvas-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 3000px;
+    height: 2000px;
+    transform-origin: 0 0;
+    transition: transform 0.1s ease-out;
+}
+
+/* Selection Box */
+.selection-box {
+    position: absolute;
+    border: 2px dashed #2196F3;
+    background: rgba(33, 150, 243, 0.3);
+    pointer-events: none;
+    z-index: 10000;
+}
+
+.selection-box.hidden {
+    display: none;
+}
+
+.selection-box.hidden {
+    display: none;
 }
 
 /* Ensure canvas is at least larger than viewport for scrolling */
@@ -387,9 +496,32 @@
 }
 
 /* Connection group hover effect */
-.connection-group:hover path:not(.temp-arrow) {
+.connection-group:hover path:not(.temp-arrow):last-child {
     stroke: #6ab0ff;
-    filter: drop-shadow(0 0 3px rgba(74, 144, 217, 0.5));
+    stroke-width: 3;
+    filter: drop-shadow(0 0 4px rgba(74, 144, 217, 0.6));
+}
+
+/* Show a subtle highlight on the wide background path on hover */
+.connection-group:hover {
+    filter: drop-shadow(0 0 8px rgba(74, 144, 217, 0.3));
+}
+
+/* Selected connection styling */
+.connection-group.selected path:not(.temp-arrow) {
+    stroke: #f59e0b;
+    stroke-width: 3;
+    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.6));
+}
+
+.connection-group.selected .arrow-label-bg {
+    fill: #f59e0b;
+    stroke: #f59e0b;
+}
+
+.connection-group.selected .arrow-label {
+    fill: #1a1a2e;
+    font-weight: bold;
 }
 
 /* Arrow context menu */
@@ -501,9 +633,20 @@
 }
 
 .delete-zone.drag-over {
-    background: rgba(233, 69, 96, 0.3);
+    background: rgba(233, 69, 96, 0.5);
     border-top-style: solid;
-    border-top-width: 3px;
+    border-top-width: 4px;
+    box-shadow: 0 -5px 20px rgba(233, 69, 96, 0.4);
+}
+
+.delete-zone.drag-over .delete-icon {
+    animation: trash-shake 0.5s ease infinite;
+}
+
+@keyframes trash-shake {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-10deg); }
+    75% { transform: rotate(10deg); }
 }
 
 .delete-zone-content {
@@ -676,10 +819,24 @@
     z-index: 1000;
 }
 
+/* When delete zone is active, highlight items being dragged */
+.delete-zone-active .placed-block.dragging {
+    box-shadow: 0 0 0 3px #e94560, 0 8px 30px rgba(233, 69, 96, 0.5);
+}
+
 .placed-block.connecting {
     border-color: #4a90d9;
     box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.4);
     animation: pulse-connecting 1.5s infinite;
+}
+
+.placed-block.selected {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.5), 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.placed-block.selected:hover {
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.6), 0 6px 20px rgba(0,0,0,0.5);
 }
 
 @keyframes pulse-connecting {
