@@ -1340,6 +1340,9 @@ class GridCanvas {
             this.cancelConnection();
         }
         
+        // Clear any selection to prevent accidental deletion while typing
+        this.clearSelection();
+        
         this.connectingFrom = blockId;
         
         // Visual feedback
@@ -1447,6 +1450,9 @@ class GridCanvas {
         const toBlock = this.placedBlocks.find(b => b.id === targetBlockId);
         
         if (fromBlock && toBlock) {
+            // Clear selection before showing modal to prevent accidental deletion
+            this.clearSelection();
+            
             this.fromBlockNameEl.textContent = fromBlock.data?.name || fromBlock.type;
             this.toBlockNameEl.textContent = toBlock.data?.name || toBlock.type;
             this.relationshipInput.value = '';
@@ -2110,7 +2116,11 @@ class GridCanvas {
                     <span>${blockCount} blocks, ${connCount} connections</span>
                     <span>${date}</span>
                 </div>
-                <button class="project-delete" title="Delete project">×</button>
+                <div class="project-actions">
+                    <button class="project-rename" title="Rename project">✏️</button>
+                    <button class="project-edit" title="Edit project (save current canvas to this project)">💾</button>
+                    <button class="project-delete" title="Delete project">🗑️</button>
+                </div>
             `;
             
             // Click to load project
@@ -2118,6 +2128,12 @@ class GridCanvas {
                 if (e.target.classList.contains('project-delete')) {
                     e.stopPropagation();
                     this.deleteProject(index);
+                } else if (e.target.classList.contains('project-rename')) {
+                    e.stopPropagation();
+                    this.renameProject(index);
+                } else if (e.target.classList.contains('project-edit')) {
+                    e.stopPropagation();
+                    this.editProject(index);
                 } else {
                     // Check if canvas has unsaved changes
                     if (this.placedBlocks.length > 0) {
@@ -2199,6 +2215,49 @@ class GridCanvas {
         this.projects.splice(index, 1);
         this.saveProjects();
         this.renderProjects();
+        this.showToast('Project deleted');
+    }
+    
+    renameProject(index) {
+        const project = this.projects[index];
+        if (!project) return;
+        
+        const newName = prompt('Enter new project name:', project.name);
+        if (!newName || !newName.trim()) return;
+        
+        project.name = newName.trim();
+        project.savedAt = new Date().toISOString();
+        this.saveProjects();
+        this.renderProjects();
+        this.showToast('Project renamed');
+    }
+    
+    editProject(index) {
+        const project = this.projects[index];
+        if (!project) return;
+        
+        const confirmed = confirm(
+            `Update "${project.name}" with the current canvas content?\n\n` +
+            `This will replace the project's saved blocks and connections.\n\n` +
+            `Are you sure?`
+        );
+        if (!confirmed) return;
+        
+        // Update project with current canvas state
+        project.blocks = this.placedBlocks.map(b => ({
+            id: b.id,
+            type: b.type,
+            data: JSON.parse(JSON.stringify(b.data)), // Deep copy
+            x: b.x,
+            y: b.y
+        }));
+        project.connections = JSON.parse(JSON.stringify(this.connections)); // Deep copy
+        project.savedAt = new Date().toISOString();
+        
+        this.currentProjectId = project.id;
+        this.saveProjects();
+        this.renderProjects();
+        this.showToast('Project updated');
     }
     
     clearCanvasWithoutConfirm() {
