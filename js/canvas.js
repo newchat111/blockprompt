@@ -779,8 +779,14 @@ class GridCanvas {
         this.showToast(`Deleted ${blockText}${separator}${connText}`);
     }
     
-    deleteConnection(connectionId) {
-        this.connections = this.connections.filter(c => c.id !== connectionId);
+    deleteConnection(connectionId, showConfirm = false) {
+        if (showConfirm && !confirm('Delete this connection?')) return;
+        
+        const index = this.connections.findIndex(c => c.id === connectionId);
+        if (index === -1) return; // Connection not found
+        
+        this.connections.splice(index, 1);
+        this.selectedConnections.delete(connectionId); // Remove from selection if selected
         this.saveConnections();
         this.renderArrows();
         this.updateOutput();
@@ -1489,8 +1495,9 @@ class GridCanvas {
     }
     
     createConnection(fromId, toId, label) {
+        // Generate truly unique ID using timestamp + random
         const connection = {
-            id: `conn-${this.connectionIdCounter++}`,
+            id: `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             from: fromId,
             to: toId,
             relationship: label
@@ -1500,6 +1507,8 @@ class GridCanvas {
         this.saveConnections();
         this.renderArrows();
         this.updateOutput();
+        
+        return connection;
     }
     
     // Cancel the current connection operation
@@ -1565,7 +1574,7 @@ class GridCanvas {
                 if (action === 'edit') {
                     this.editConnection(connection);
                 } else if (action === 'delete') {
-                    this.deleteConnection(connection.id);
+                    this.deleteConnection(connection.id, true); // Show confirm
                 }
                 this.hideArrowMenu();
             });
@@ -1598,16 +1607,6 @@ class GridCanvas {
             this.renderArrows();
             this.updateOutput();
         }
-    }
-    
-    // Delete connection
-    deleteConnection(connectionId) {
-        if (!confirm('Delete this connection?')) return;
-        
-        this.connections = this.connections.filter(c => c.id !== connectionId);
-        this.saveConnections();
-        this.renderArrows();
-        this.updateOutput();
     }
     
     // Render all connection arrows
@@ -2162,11 +2161,11 @@ class GridCanvas {
             blocks: this.placedBlocks.map(b => ({
                 id: b.id,
                 type: b.type,
-                data: b.data,
+                data: JSON.parse(JSON.stringify(b.data)), // Deep copy
                 x: b.x,
                 y: b.y
             })),
-            connections: this.connections,
+            connections: JSON.parse(JSON.stringify(this.connections)), // Deep copy
             savedAt: new Date().toISOString()
         };
         
@@ -2183,19 +2182,34 @@ class GridCanvas {
         // Clear current canvas
         this.clearCanvasWithoutConfirm();
         
-        // Load blocks
-        this.blockIdCounter = 0;
+        // Create ID mapping for blocks (old ID -> new ID)
+        const blockIdMap = new Map();
+        
+        // Load blocks with preserved IDs if possible, otherwise create new ones
         project.blocks.forEach(block => {
-            this.createPlacedBlock(
-                { type: block.type, data: block.data },
+            const newBlock = this.createPlacedBlock(
+                { type: block.type, data: JSON.parse(JSON.stringify(block.data)) },
                 block.x,
-                block.y
+                block.y,
+                block.id // Try to preserve original ID
             );
+            if (newBlock) {
+                blockIdMap.set(block.id, newBlock.dataset.blockId);
+            }
         });
         
-        // Load connections
-        this.connections = project.connections || [];
-        this.connectionIdCounter = this.connections.length;
+        // Load connections with updated block IDs
+        this.connections = (project.connections || []).map(conn => ({
+            ...conn,
+            from: blockIdMap.get(conn.from) || conn.from,
+            to: blockIdMap.get(conn.to) || conn.to
+        })).filter(conn => {
+            // Only keep connections where both blocks exist
+            const fromExists = this.placedBlocks.some(b => b.id === conn.from);
+            const toExists = this.placedBlocks.some(b => b.id === conn.to);
+            return fromExists && toExists;
+        });
+        
         this.saveConnections();
         this.renderArrows();
         

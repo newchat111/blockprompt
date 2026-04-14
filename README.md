@@ -36,6 +36,7 @@ Or use a local development server (recommended):
 # Using Python 3
 python -m http.server 8000
 
+
 # Using Node.js (npx)
 npx serve .
 
