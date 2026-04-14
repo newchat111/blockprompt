@@ -14,14 +14,39 @@
         </header>
 
         <div class="toolbar">
-            <button class="btn btn-class" data-type="class">+ Class</button>
-            <button class="btn btn-function" data-type="function">+ Function</button>
-            <button class="btn btn-variable" data-type="variable">+ Variable</button>
-            <button class="btn btn-custom" data-type="custom">+ Custom</button>
-            <button class="btn btn-import" data-type="import">+ Import</button>
-            <button class="btn btn-clear" id="clearBtn">Clear All</button>
-            <button class="btn btn-canvas-mode" id="canvasModeBtn" title="Open Grid Canvas">🖼️ Canvas</button>
-            <button class="btn btn-toggle-sidebar" id="toggleSidebarBtn" title="Toggle Sidebar">📖 Sidebar</button>
+            <div class="block-palette">
+                <button class="palette-btn palette-class" data-type="class">
+                    <span class="palette-dot"></span>
+                    <span class="palette-name">Class</span>
+                </button>
+                <button class="palette-btn palette-function" data-type="function">
+                    <span class="palette-dot"></span>
+                    <span class="palette-name">Function</span>
+                </button>
+                <button class="palette-btn palette-variable" data-type="variable">
+                    <span class="palette-dot"></span>
+                    <span class="palette-name">Variable</span>
+                </button>
+                <button class="palette-btn palette-custom" data-type="custom">
+                    <span class="palette-dot"></span>
+                    <span class="palette-name">Custom</span>
+                </button>
+                <button class="palette-btn palette-import" data-type="import">
+                    <span class="palette-dot"></span>
+                    <span class="palette-name">Import</span>
+                </button>
+            </div>
+            <div class="toolbar-actions">
+                <button class="action-btn action-secondary" id="clearBtn" title="Clear all blocks">
+                    <span class="action-label">Clear</span>
+                </button>
+                <button class="action-btn action-secondary" id="toggleSidebarBtn" title="Toggle Sidebar">
+                    <span class="action-label">Sidebar</span>
+                </button>
+                <button class="action-btn action-primary" id="canvasModeBtn" title="Open Grid Canvas">
+                    <span class="action-label">Canvas</span>
+                </button>
+            </div>
         </div>
 
         <div class="main">

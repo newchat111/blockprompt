@@ -22,7 +22,7 @@ class CodeBlocks {
 
     init() {
         // Toolbar buttons
-        document.querySelectorAll('.toolbar .btn[data-type]').forEach(btn => {
+        document.querySelectorAll('.toolbar [data-type]').forEach(btn => {
             btn.addEventListener('click', () => this.addBlock(btn.dataset.type));
         });
 
@@ -731,14 +731,14 @@ class CodeBlocks {
         this.renderSavedBlocks();
     }
 
-    restoreSavedBlock(savedBlock) {
+    restoreSavedBlock(savedBlock, isEditing = false) {
         // Remove hint if present
         const hint = this.canvas.querySelector('.canvas-hint');
         if (hint) hint.remove();
 
-        // Check for duplicate name before placing
+        // Check for duplicate name before placing (skip when editing)
         const blockName = savedBlock.data?.name;
-        if (blockName) {
+        if (blockName && !isEditing) {
             const existingOnCanvas = Array.from(this.canvas.querySelectorAll('.block')).find(b => {
                 const nameInput = b.querySelector('[data-field="name"]');
                 return nameInput && nameInput.value.trim() === blockName;
@@ -752,7 +752,7 @@ class CodeBlocks {
         
         // Create a new block based on the saved data
         const blockId = `block-${this.blockIdCounter++}`;
-        const block = this.createBlockFromSaved(savedBlock, blockId);
+        const block = this.createBlockFromSaved(savedBlock, blockId, isEditing);
 
         // Add to canvas
         this.canvas.appendChild(block);
@@ -761,7 +761,7 @@ class CodeBlocks {
 
     editSavedBlock(savedBlock, index) {
         // Place the block on canvas for editing
-        this.restoreSavedBlock(savedBlock);
+        this.restoreSavedBlock(savedBlock, true);
         
         // Remove from sidebar since it's now being edited
         this.savedBlocks.splice(index, 1);
@@ -782,7 +782,7 @@ class CodeBlocks {
         }
     }
 
-    createBlockFromSaved(savedBlock, id) {
+    createBlockFromSaved(savedBlock, id, isEditing = false) {
         const type = savedBlock.type;
         const data = savedBlock.data;
         
@@ -808,7 +808,8 @@ class CodeBlocks {
                     const { type: childType, ...childDataWithoutType } = childData;
                     const childBlock = this.createBlockFromSaved(
                         { type: childType, data: childDataWithoutType },
-                        childId
+                        childId,
+                        isEditing
                     );
                     container.appendChild(childBlock);
                 });
@@ -818,8 +819,8 @@ class CodeBlocks {
         // Update display name
         this.updateBlockDisplay(block);
         
-        // Check for duplicate name and show warning if needed
-        if (data.name) {
+        // Check for duplicate name and show warning if needed (skip when editing)
+        if (data.name && !isEditing) {
             this.checkDuplicateName(block, data.name);
         }
 

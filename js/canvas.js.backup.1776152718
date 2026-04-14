@@ -1385,19 +1385,11 @@ class GridCanvas {
         const fromBlock = this.placedBlocks.find(b => b.id === this.connectingFrom);
         if (!fromBlock) return;
         
-        const fromW = fromBlock.element.offsetWidth;
-        const fromH = fromBlock.element.offsetHeight;
-        const fromCx = fromBlock.x + fromW / 2;
-        const fromCy = fromBlock.y + fromH / 2;
-        
-        const mx = this.mouseX || fromCx + 100;
-        const my = this.mouseY || fromCy;
-        
-        // Start from the edge of the source block facing the mouse
-        const start = this.getEdgeIntersection(fromCx, fromCy, mx, my, fromBlock.x, fromBlock.y, fromW, fromH);
+        const startX = fromBlock.x + 200; // Right side of block
+        const startY = fromBlock.y + 40;  // Middle of block
         
         const path = this.tempArrow;
-        path.setAttribute('d', `M ${start.x} ${start.y} L ${mx} ${my}`);
+        path.setAttribute('d', `M ${startX} ${startY} L ${this.mouseX || startX + 100} ${this.mouseY || startY}`);
     }
     
     // Track mouse position for temp arrow (called from main onCanvasMouseMove)
@@ -1606,81 +1598,14 @@ class GridCanvas {
         if (existing) existing.remove();
     }
     
-    // Edit connection relationship with inline textbox
+    // Edit connection relationship
     editConnection(connection) {
-        const fromBlock = this.placedBlocks.find(b => b.id === connection.from);
-        const toBlock = this.placedBlocks.find(b => b.id === connection.to);
-        if (!fromBlock || !toBlock) return;
-
-        // Compute the same edge points used when rendering the arrow
-        const fromW = fromBlock.element.offsetWidth;
-        const fromH = fromBlock.element.offsetHeight;
-        const toW = toBlock.element.offsetWidth;
-        const toH = toBlock.element.offsetHeight;
-        const fromCx = fromBlock.x + fromW / 2;
-        const fromCy = fromBlock.y + fromH / 2;
-        const toCx = toBlock.x + toW / 2;
-        const toCy = toBlock.y + toH / 2;
-        
-        const start = this.getEdgeIntersection(fromCx, fromCy, toCx, toCy, fromBlock.x, fromBlock.y, fromW, fromH);
-        const end = this.getEdgeIntersection(toCx, toCy, fromCx, fromCy, toBlock.x, toBlock.y, toW, toH);
-        
-        const centerX = (start.x + end.x) / 2;
-        const centerY = (start.y + end.y) / 2;
-
-        // Remove any existing inline editor
-        this.hideInlineEditor();
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'arrow-inline-editor';
-        input.value = connection.relationship || '';
-        input.placeholder = 'connects to';
-
-        // Position at center of arrow
-        input.style.left = `${centerX}px`;
-        input.style.top = `${centerY - 14}px`;
-
-        const save = () => {
-            const value = input.value.trim();
-            connection.relationship = value || 'connects to';
-            this.hideInlineEditor();
+        const newRelationship = prompt('Edit relationship:', connection.relationship || '');
+        if (newRelationship !== null) {
+            connection.relationship = newRelationship.trim() || 'connects to';
             this.saveConnections();
             this.renderArrows();
             this.updateOutput();
-        };
-
-        const cancel = () => {
-            this.hideInlineEditor();
-        };
-
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                save();
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                cancel();
-            }
-        });
-
-        input.addEventListener('blur', () => {
-            // Only save if the input is still in the DOM (not cancelled/removed already)
-            if (input.parentNode) {
-                save();
-            }
-        });
-
-        this.canvasContent.appendChild(input);
-        input.focus();
-        input.select();
-        this.arrowInlineEditor = input;
-    }
-
-    hideInlineEditor() {
-        if (this.arrowInlineEditor) {
-            this.arrowInlineEditor.remove();
-            this.arrowInlineEditor = null;
         }
     }
     
@@ -1703,31 +1628,6 @@ class GridCanvas {
         });
     }
     
-    // Simple ray-box intersection: find where the line from outside point A
-    // to inside point B first hits the rectangle bounds.
-    getEdgeIntersection(Ax, Ay, Bx, By, rectX, rectY, rectW, rectH) {
-        const dx = Bx - Ax;
-        const dy = By - Ay;
-        let t = Infinity;
-        
-        if (dx > 0) {
-            t = Math.min(t, (rectX + rectW - Ax) / dx);
-        } else if (dx < 0) {
-            t = Math.min(t, (rectX - Ax) / dx);
-        }
-        
-        if (dy > 0) {
-            t = Math.min(t, (rectY + rectH - Ay) / dy);
-        } else if (dy < 0) {
-            t = Math.min(t, (rectY - Ay) / dy);
-        }
-        
-        return {
-            x: Ax + t * dx,
-            y: Ay + t * dy
-        };
-    }
-    
     // Render a single connection
     renderConnection(connection) {
         const fromBlock = this.placedBlocks.find(b => b.id === connection.from);
@@ -1735,27 +1635,11 @@ class GridCanvas {
         
         if (!fromBlock || !toBlock) return;
         
-        // Get actual block dimensions from DOM
-        const fromW = fromBlock.element.offsetWidth;
-        const fromH = fromBlock.element.offsetHeight;
-        const toW = toBlock.element.offsetWidth;
-        const toH = toBlock.element.offsetHeight;
-        
-        // Calculate centers
-        const fromCx = fromBlock.x + fromW / 2;
-        const fromCy = fromBlock.y + fromH / 2;
-        const toCx = toBlock.x + toW / 2;
-        const toCy = toBlock.y + toH / 2;
-        
-        // Line goes from source center to target center, but we clip it at each block's edge.
-        // This makes the arrowhead sit on the edge while pointing toward the center.
-        const start = this.getEdgeIntersection(fromCx, fromCy, toCx, toCy, fromBlock.x, fromBlock.y, fromW, fromH);
-        const end = this.getEdgeIntersection(toCx, toCy, fromCx, fromCy, toBlock.x, toBlock.y, toW, toH);
-        
-        const startX = start.x;
-        const startY = start.y;
-        const endX = end.x;
-        const endY = end.y;
+        // Calculate connection points
+        const startX = fromBlock.x + 200; // Right edge
+        const startY = fromBlock.y + 40;  // Middle
+        const endX = toBlock.x;           // Left edge
+        const endY = toBlock.y + 40;      // Middle
         
         // Create a group for the connection
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -1763,15 +1647,15 @@ class GridCanvas {
         group.dataset.connectionId = connection.id;
         group.style.cursor = 'pointer';
         
-        // Straight line from edge to edge guarantees the arrowhead always points
-        // exactly toward the target center (and vice versa) regardless of angle.
-        const pathD = `M ${startX} ${startY} L ${endX} ${endY}`;
+        // Calculate path
+        const controlX = (startX + endX) / 2;
+        const pathD = `M ${startX} ${startY} Q ${controlX} ${startY} ${(startX + endX) / 2} ${(startY + endY) / 2} Q ${controlX} ${endY} ${endX} ${endY}`;
         
         // Create a wider invisible background path for easier clicking/hovering
         const bgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         bgPath.setAttribute('d', pathD);
         bgPath.setAttribute('stroke', 'transparent');
-        bgPath.setAttribute('stroke-width', '150'); // wider for easier selection
+        bgPath.setAttribute('stroke-width', '80'); // 2x wider for easier selection
         bgPath.setAttribute('fill', 'none');
         bgPath.style.pointerEvents = 'stroke';
         bgPath.style.cursor = 'pointer';
@@ -1780,7 +1664,7 @@ class GridCanvas {
         const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         hitPath.setAttribute('d', pathD);
         hitPath.setAttribute('stroke', 'transparent');
-        hitPath.setAttribute('stroke-width', '100'); // wider for easier selection
+        hitPath.setAttribute('stroke-width', '50'); // 2x wider
         hitPath.setAttribute('fill', 'none');
         hitPath.style.pointerEvents = 'stroke';
         
