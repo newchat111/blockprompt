@@ -40,9 +40,6 @@
                 <button class="action-btn action-secondary" id="clearBtn" title="Clear all blocks">
                     <span class="action-label">Clear</span>
                 </button>
-                <button class="action-btn action-secondary" id="toggleSidebarBtn" title="Toggle Sidebar">
-                    <span class="action-label">Sidebar</span>
-                </button>
                 <button class="action-btn action-primary" id="canvasModeBtn" title="Open Grid Canvas">
                     <span class="action-label">Canvas</span>
                 </button>
@@ -71,14 +68,6 @@
                         Drag Variable blocks into Function blocks</small>
                     </div>
                 </div>
-                <!-- Canvas sidebar - inherits from main sidebar -->
-                <div id="canvasSidebar" class="canvas-sidebar hidden">
-                    <div class="canvas-sidebar-header">
-                        <h4>Saved Blocks</h4>
-                        <button id="closeCanvasSidebarBtn" class="btn-close-canvas-sidebar" title="Close">×</button>
-                    </div>
-                    <div id="canvasSidebarContent" class="canvas-sidebar-content"></div>
-                </div>
             </div>
 
             <div class="output-panel">
@@ -91,6 +80,7 @@
         </div>
     </div>
 
+    <script src="js/utils.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

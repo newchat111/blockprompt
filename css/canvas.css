@@ -1248,46 +1248,19 @@
     box-shadow: 0 6px 16px rgba(74, 144, 217, 0.35);
 }
 
-/* Scrollbar styling for canvas */
+/* Scrollbar styling for canvas (inherits global, just wider) */
 .grid-canvas::-webkit-scrollbar {
     width: 10px;
     height: 10px;
 }
 
-.grid-canvas::-webkit-scrollbar-track {
-    background: #0a0a12;
-}
-
 .grid-canvas::-webkit-scrollbar-thumb {
-    background: #1e293b;
     border-radius: 5px;
     border: 2px solid #0a0a12;
 }
 
-.grid-canvas::-webkit-scrollbar-thumb:hover {
-    background: #334155;
-}
-
 .grid-canvas::-webkit-scrollbar-corner {
     background: #0a0a12;
-}
-
-/* Scrollbar for output panel */
-.canvas-output-content::-webkit-scrollbar {
-    width: 6px;
-}
-
-.canvas-output-content::-webkit-scrollbar-track {
-    background: #0a0a12;
-}
-
-.canvas-output-content::-webkit-scrollbar-thumb {
-    background: #1e293b;
-    border-radius: 3px;
-}
-
-.canvas-output-content::-webkit-scrollbar-thumb:hover {
-    background: #334155;
 }
 
 /* Responsive */

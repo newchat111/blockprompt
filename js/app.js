@@ -5,16 +5,12 @@ class CodeBlocks {
         this.canvas = document.getElementById('canvas');
         this.output = document.getElementById('output');
         this.sidebarContent = document.getElementById('sidebarContent');
-        this.canvasSidebar = document.getElementById('canvasSidebar');
-        this.canvasSidebarContent = document.getElementById('canvasSidebarContent');
         this.mainSidebar = document.querySelector('.sidebar');
         this.blocks = [];
         this.blockIdCounter = 0;
         this.draggedBlock = null;
         this.dragSource = null;
         this.sidebarDraggedIndex = null;
-        this.canvasMode = false;
-        this.sidebarVisible = true;
         this.savedBlocks = this.loadSavedBlocks();
 
         this.init();
@@ -39,12 +35,6 @@ class CodeBlocks {
         document.getElementById('canvasModeBtn').addEventListener('click', () => {
             window.location.href = 'canvas.html';
         });
-
-        // Sidebar toggle button
-        document.getElementById('toggleSidebarBtn').addEventListener('click', () => this.toggleSidebar());
-
-        // Close canvas sidebar button
-        document.getElementById('closeCanvasSidebarBtn').addEventListener('click', () => this.closeCanvasSidebar());
 
         // Canvas drop zone (for reordering and nesting)
         this.canvas.addEventListener('dragover', (e) => this.onCanvasDragOver(e));
@@ -451,20 +441,11 @@ class CodeBlocks {
 
     // Sidebar functionality
     loadSavedBlocks() {
-        try {
-            const saved = localStorage.getItem('codeblocks_saved');
-            return saved ? JSON.parse(saved) : [];
-        } catch (e) {
-            return [];
-        }
+        return Storage.get('codeblocks_saved', []);
     }
 
     saveSavedBlocks() {
-        try {
-            localStorage.setItem('codeblocks_saved', JSON.stringify(this.savedBlocks));
-        } catch (e) {
-            console.warn('Failed to save blocks to localStorage');
-        }
+        Storage.set('codeblocks_saved', this.savedBlocks);
     }
 
     renderSavedBlocks() {
@@ -493,8 +474,7 @@ class CodeBlocks {
         el.dataset.index = index;
         el.draggable = true;
 
-        // Always use the parent block name (from data.name)
-        const displayName = savedBlock.data.name || savedBlock.type;
+        const displayName = Utils.displayName(savedBlock);
 
         el.innerHTML = `
             <div class="saved-block-header">
@@ -673,13 +653,7 @@ class CodeBlocks {
         
         // Show hint if canvas is now empty
         if (this.canvas.querySelectorAll('.block').length === 0) {
-            this.canvas.innerHTML = `
-                <div class="canvas-hint">
-                    Click buttons to add blocks<br>
-                    <small>Drag Function/Variable blocks into Class blocks<br>
-                    Drag Variable blocks into Function blocks</small>
-                </div>
-            `;
+            this.canvas.innerHTML = CANVAS_HINT_HTML;
         }
     }
 
@@ -691,33 +665,12 @@ class CodeBlocks {
 
     reorderSavedBlock(fromIndex, toIndex, dropPosition) {
         if (fromIndex === toIndex) return;
-        
-        // Remove the block from its original position
         const [movedBlock] = this.savedBlocks.splice(fromIndex, 1);
-        
-        // Calculate the new index based on drop position
         let newIndex = toIndex;
-        if (fromIndex < toIndex && dropPosition === 'after') {
-            // If moving from before to after, we need to adjust because
-            // the array has shifted after removal
-            newIndex = toIndex;
-        } else if (fromIndex > toIndex && dropPosition === 'before') {
-            // If moving from after to before
-            newIndex = toIndex;
-        } else if (fromIndex < toIndex && dropPosition === 'before') {
-            // Moving from before to before the target
-            newIndex = toIndex - 1;
-        } else if (fromIndex > toIndex && dropPosition === 'after') {
-            // Moving from after to after the target
-            newIndex = toIndex + 1;
-        }
-        
-        // Ensure index is within bounds
+        if (fromIndex < toIndex && dropPosition === 'before') newIndex--;
+        else if (fromIndex > toIndex && dropPosition === 'after') newIndex++;
         newIndex = Math.max(0, Math.min(newIndex, this.savedBlocks.length));
-        
-        // Insert at new position
         this.savedBlocks.splice(newIndex, 0, movedBlock);
-        
         this.saveSavedBlocks();
         this.renderSavedBlocks();
     }
@@ -850,115 +803,8 @@ class CodeBlocks {
         if (this.canvas.querySelectorAll('.block').length === 0) return;
         if (!confirm('Clear all blocks?')) return;
 
-        this.canvas.innerHTML = `
-            <div class="canvas-hint">
-                Click buttons to add blocks<br>
-                <small>Drag Function/Variable blocks into Class blocks<br>
-                Drag Variable blocks into Function blocks</small>
-            </div>
-        `;
+        this.canvas.innerHTML = CANVAS_HINT_HTML;
         this.updateOutput();
-    }
-
-    // Canvas Mode and Sidebar Toggle
-    toggleCanvasMode() {
-        this.canvasMode = !this.canvasMode;
-        const btn = document.getElementById('canvasModeBtn');
-        
-        if (this.canvasMode) {
-            // Enable canvas mode - show canvas sidebar
-            this.canvasSidebar.classList.remove('hidden');
-            this.renderCanvasSidebar();
-            btn.classList.add('active');
-            
-            // Auto-hide main sidebar if visible
-            if (this.sidebarVisible) {
-                this.mainSidebar.classList.add('suppressed');
-            }
-        } else {
-            // Disable canvas mode
-            this.closeCanvasSidebar();
-            btn.classList.remove('active');
-        }
-    }
-
-    closeCanvasSidebar() {
-        this.canvasMode = false;
-        this.canvasSidebar.classList.add('hidden');
-        document.getElementById('canvasModeBtn').classList.remove('active');
-        
-        // Restore main sidebar if it was visible
-        if (this.sidebarVisible) {
-            this.mainSidebar.classList.remove('suppressed');
-        }
-    }
-
-    toggleSidebar() {
-        this.sidebarVisible = !this.sidebarVisible;
-        const btn = document.getElementById('toggleSidebarBtn');
-        
-        if (this.sidebarVisible) {
-            this.mainSidebar.classList.remove('hidden');
-            this.mainSidebar.classList.remove('suppressed');
-            btn.classList.add('active');
-        } else {
-            this.mainSidebar.classList.add('hidden');
-            btn.classList.remove('active');
-        }
-    }
-
-    renderCanvasSidebar() {
-        this.canvasSidebarContent.innerHTML = '';
-        
-        if (this.savedBlocks.length === 0) {
-            this.canvasSidebarContent.innerHTML = `
-                <div class="canvas-sidebar-hint">
-                    No saved blocks<br>
-                    <small>Save blocks from main sidebar</small>
-                </div>
-            `;
-            return;
-        }
-        
-        this.savedBlocks.forEach((savedBlock, index) => {
-            const el = this.createCanvasSidebarBlock(savedBlock, index);
-            this.canvasSidebarContent.appendChild(el);
-        });
-    }
-
-    createCanvasSidebarBlock(savedBlock, index) {
-        const el = document.createElement('div');
-        el.className = `canvas-sidebar-block block-${savedBlock.type}`;
-        el.dataset.index = index;
-        el.draggable = true;
-
-        const displayName = savedBlock.data.name || savedBlock.type;
-
-        el.innerHTML = `
-            <div class="canvas-sidebar-block-header">
-                <span class="canvas-sidebar-block-type">${savedBlock.type}</span>
-            </div>
-            <div class="canvas-sidebar-block-name">${displayName}</div>
-        `;
-
-        // Drag to canvas
-        el.addEventListener('dragstart', (e) => {
-            el.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'copy';
-            e.dataTransfer.setData('source', 'canvas-sidebar');
-            e.dataTransfer.setData('savedBlock', JSON.stringify(savedBlock));
-        });
-
-        el.addEventListener('dragend', (e) => {
-            el.classList.remove('dragging');
-        });
-
-        // Click to add to canvas
-        el.addEventListener('click', () => {
-            this.restoreSavedBlock(savedBlock);
-        });
-
-        return el;
     }
 
     // Data collection
@@ -1120,12 +966,7 @@ class CodeBlocks {
     }
 
     copyOutput() {
-        const text = this.output.textContent;
-        navigator.clipboard.writeText(text).then(() => {
-            const btn = document.getElementById('copyBtn');
-            btn.textContent = 'Copied!';
-            setTimeout(() => btn.textContent = 'Copy', 1500);
-        });
+        Clipboard.copy(this.output.textContent, document.getElementById('copyBtn'));
     }
 }
 

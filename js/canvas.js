@@ -11,1249 +11,237 @@ class GridCanvas {
         this.canvasOutput = document.getElementById('canvasOutput');
         this.canvasHint = document.getElementById('canvasHint');
         this.selectionBox = document.getElementById('selectionBox');
-        
-        // Modal elements
+
         this.relationshipModal = document.getElementById('relationshipModal');
         this.relationshipInput = document.getElementById('relationshipInput');
         this.fromBlockNameEl = document.getElementById('fromBlockName');
         this.toBlockNameEl = document.getElementById('toBlockName');
-        
+
         this.savedBlocks = this.loadSavedBlocks();
-        this.placedBlocks = []; // Track placed blocks with their positions
-        this.connections = []; // Track connections between blocks
+        this.placedBlocks = [];
+        this.connections = [];
         this.blockIdCounter = 0;
         this.connectionIdCounter = 0;
-        
-        // Drag state
+
         this.draggedBlock = null;
         this.dragSource = null;
         this.dragOffset = { x: 0, y: 0 };
-        
-        // Connection state
-        this.connectingFrom = null; // Block ID we're connecting from
-        this.tempArrow = null; // Temporary arrow element
-        
-        // Grid settings
+
+        this.connectingFrom = null;
+        this.tempArrow = null;
         this.gridSize = 40;
-        
-        // Projects
+
         this.projects = this.loadProjects();
         this.currentProjectId = null;
-        
-        // Zoom settings
-        this.zoomLevel = 1;
-        this.minZoom = 0.25;
-        this.maxZoom = 3;
-        this.zoomStep = 0.25;
-        
-        // Multi-select state
-        this.isSelecting = false;
-        this.selectStart = { x: 0, y: 0 };
-        this.selectedBlocks = new Set();
-        this.selectedConnections = new Set(); // Track selected connections
-        this.isDraggingSelection = false;
-        this.selectionDragStart = { x: 0, y: 0 };
-        this.selectionInitialPositions = new Map();
-        
-        // Clipboard for copy-paste
+
+        this.zoom = new ZoomManager(this);
+        this.selection = new SelectionManager(this);
+        this.undo = new UndoManager(this);
+
         this.clipboard = null;
         this.clipboardOffset = { x: 20, y: 20 };
         this.pasteCount = 0;
-        
-        // Undo/Redo stack
-        this.undoStack = [];
-        this.redoStack = [];
-        this.maxUndoSize = 50; // Maximum number of undo states
-        
+
+        this.arrowInlineEditor = null;
+        this.pendingConnection = null;
+
         this.init();
     }
-    
+
     init() {
-        // Back button
-        document.getElementById('backBtn').addEventListener('click', () => {
-            window.location.href = 'index.html';
-        });
-        
-        // Clear canvas button
+        document.getElementById('backBtn').addEventListener('click', () => window.location.href = 'index.html');
         document.getElementById('clearCanvasBtn').addEventListener('click', () => this.clearCanvas());
-        
-        // Copy output button
         document.getElementById('copyOutputBtn').addEventListener('click', () => this.copyOutput());
-        
-        // Modal buttons
         document.getElementById('cancelRelationship').addEventListener('click', () => this.cancelConnection());
         document.getElementById('confirmRelationship').addEventListener('click', () => this.confirmConnection());
-        this.relationshipInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.confirmConnection();
-        });
-        
-        // Render sidebar blocks
+        this.relationshipInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.confirmConnection(); });
+
         this.renderSidebar();
-        
-        // Render projects
         this.renderProjects();
-        
-        // Save project button
+
         document.getElementById('saveProjectBtn').addEventListener('click', () => this.saveCurrentProject());
-        
-        // Minimize panel buttons
         this.initMinimizeButtons();
-        
-        // Canvas drop zone for placing blocks
+
         this.gridCanvas.addEventListener('dragover', (e) => this.onCanvasDragOver(e));
         this.gridCanvas.addEventListener('drop', (e) => this.onCanvasDrop(e));
-        
-        // Delete zone
+
         this.deleteZone.addEventListener('dragover', (e) => this.onDeleteZoneDragOver(e));
         this.deleteZone.addEventListener('dragleave', (e) => this.onDeleteZoneDragLeave(e));
         this.deleteZone.addEventListener('drop', (e) => this.onDeleteZoneDrop(e));
-        
-        // Mouse events for drawing temporary arrow and selection
+
         this.gridCanvas.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
         this.gridCanvas.addEventListener('click', (e) => this.onCanvasClick(e));
-        
-        // Zoom controls
-        const zoomInBtn = document.getElementById('zoomInBtn');
-        const zoomOutBtn = document.getElementById('zoomOutBtn');
-        const zoomResetBtn = document.getElementById('zoomResetBtn');
-        
-        if (zoomInBtn) {
-            zoomInBtn.addEventListener('click', () => {
-                console.log('zoomInBtn clicked');
-                this.zoomIn();
-            });
-        } else {
-            console.error('zoomInBtn not found!');
-        }
-        
-        if (zoomOutBtn) {
-            zoomOutBtn.addEventListener('click', () => {
-                console.log('zoomOutBtn clicked');
-                this.zoomOut();
-            });
-        } else {
-            console.error('zoomOutBtn not found!');
-        }
-        
-        if (zoomResetBtn) {
-            zoomResetBtn.addEventListener('click', () => {
-                console.log('zoomResetBtn clicked');
-                this.resetZoom();
-            });
-        } else {
-            console.error('zoomResetBtn not found!');
-        }
-        
-        // Mouse wheel zoom
-        this.gridCanvas.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
-        
-        // Multi-select mouse events
-        this.gridCanvas.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
-        this.gridCanvas.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
-        
-        // Keyboard shortcuts for copy-paste and delete
+
+        this.zoom.bindControls();
+        this.gridCanvas.addEventListener('wheel', (e) => this.zoom.onWheel(e), { passive: false });
+
+        this.gridCanvas.addEventListener('mousedown', (e) => this.selection.onMouseDown(e));
+        this.gridCanvas.addEventListener('mouseup', (e) => this.selection.onMouseUp(e));
+
         document.addEventListener('keydown', (e) => this.onKeyDown(e));
-        
-        // Listen for storage changes
+
         window.addEventListener('storage', (e) => {
             if (e.key === 'codeblocks_saved') {
                 this.savedBlocks = this.loadSavedBlocks();
                 this.renderSidebar();
             }
         });
-        
-        // Initial output
+
         this.updateOutput();
-        
-        // Restore minimized states
         this.restoreMinimizedStates();
     }
-    
-    // Initialize minimize/expand buttons for panels
+
     initMinimizeButtons() {
-        // Projects panel
-        const minimizeProjectsBtn = document.getElementById('minimizeProjectsBtn');
-        const projectsPanel = document.getElementById('projectsPanel');
-        if (minimizeProjectsBtn && projectsPanel) {
-            minimizeProjectsBtn.addEventListener('click', () => {
-                projectsPanel.classList.toggle('minimized');
-                this.saveMinimizedState('projects', projectsPanel.classList.contains('minimized'));
+        const bind = (btnId, panelId, key) => {
+            const btn = document.getElementById(btnId);
+            const panel = document.getElementById(panelId);
+            btn?.addEventListener('click', () => {
+                panel.classList.toggle('minimized');
+                this.saveMinimizedState(key, panel.classList.contains('minimized'));
             });
-        }
-        
-        // Saved Blocks panel
-        const minimizeSavedBlocksBtn = document.getElementById('minimizeSavedBlocksBtn');
-        const savedBlocksPanel = document.getElementById('savedBlocksPanel');
-        if (minimizeSavedBlocksBtn && savedBlocksPanel) {
-            minimizeSavedBlocksBtn.addEventListener('click', () => {
-                savedBlocksPanel.classList.toggle('minimized');
-                this.saveMinimizedState('savedBlocks', savedBlocksPanel.classList.contains('minimized'));
-            });
-        }
-        
-        // Output panel
-        const minimizeOutputBtn = document.getElementById('minimizeOutputBtn');
-        const outputPanel = document.getElementById('outputPanel');
-        if (minimizeOutputBtn && outputPanel) {
-            minimizeOutputBtn.addEventListener('click', () => {
-                outputPanel.classList.toggle('minimized');
-                this.saveMinimizedState('output', outputPanel.classList.contains('minimized'));
-            });
-        }
-    }
-    
-    // ========== ZOOM FUNCTIONALITY ==========
-    
-    zoomIn() {
-        console.log('zoomIn called, current level:', this.zoomLevel);
-        if (this.zoomLevel < this.maxZoom) {
-            this.zoomLevel = Math.min(this.maxZoom, this.zoomLevel + this.zoomStep);
-            console.log('new zoom level:', this.zoomLevel);
-            this.applyZoom();
-        }
-    }
-    
-    zoomOut() {
-        console.log('zoomOut called, current level:', this.zoomLevel);
-        if (this.zoomLevel > this.minZoom) {
-            this.zoomLevel = Math.max(this.minZoom, this.zoomLevel - this.zoomStep);
-            console.log('new zoom level:', this.zoomLevel);
-            this.applyZoom();
-        }
-    }
-    
-    resetZoom() {
-        console.log('resetZoom called');
-        this.zoomLevel = 1;
-        this.applyZoom();
-    }
-    
-    applyZoom() {
-        console.log('applyZoom called with level:', this.zoomLevel);
-        // Update zoom display
-        const zoomLevelEl = document.getElementById('zoomLevel');
-        if (zoomLevelEl) {
-            zoomLevelEl.textContent = Math.round(this.zoomLevel * 100) + '%';
-        }
-        
-        // Apply transform to canvas content
-        if (this.canvasContent) {
-            this.canvasContent.style.transform = `scale(${this.zoomLevel})`;
-            this.canvasContent.style.transformOrigin = '0 0';
-            console.log('transform applied:', this.canvasContent.style.transform);
-        } else {
-            console.error('canvasContent is null!');
-        }
-        
-        // Update arrow layer size to match scaled content
-        this.updateArrowLayerSize();
-        
-        // Re-render arrows to match new scale
-        this.renderArrows();
-    }
-    
-    updateArrowLayerSize() {
-        // Scale the arrow layer inversely so arrows appear at correct positions
-        // but we need to adjust the SVG viewBox or coordinate system
-        const baseWidth = 3000;
-        const baseHeight = 2000;
-        this.arrowLayer.style.width = baseWidth + 'px';
-        this.arrowLayer.style.height = baseHeight + 'px';
-    }
-    
-    onWheel(e) {
-        // Zoom with Ctrl+Wheel
-        if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            
-            // Smooth zooming based on wheel delta
-            // Use a factor to convert delta to zoom change (smaller = smoother)
-            const zoomFactor = 0.005;
-            const delta = -e.deltaY * zoomFactor;
-            
-            let newZoom = this.zoomLevel * (1 + delta);
-            newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, newZoom));
-            
-            this.zoomLevel = newZoom;
-            this.applyZoom();
-        }
-    }
-    
-    // Convert screen coordinates to canvas coordinates (accounting for zoom)
-    screenToCanvas(screenX, screenY) {
-        const rect = this.gridCanvas.getBoundingClientRect();
-        const scrollLeft = this.gridCanvas.scrollLeft;
-        const scrollTop = this.gridCanvas.scrollTop;
-        
-        const x = (screenX - rect.left + scrollLeft) / this.zoomLevel;
-        const y = (screenY - rect.top + scrollTop) / this.zoomLevel;
-        
-        return { x, y };
-    }
-    
-    // Convert canvas coordinates to screen coordinates
-    canvasToScreen(canvasX, canvasY) {
-        const rect = this.gridCanvas.getBoundingClientRect();
-        const scrollLeft = this.gridCanvas.scrollLeft;
-        const scrollTop = this.gridCanvas.scrollTop;
-        
-        const x = canvasX * this.zoomLevel + rect.left - scrollLeft;
-        const y = canvasY * this.zoomLevel + rect.top - scrollTop;
-        
-        return { x, y };
-    }
-    
-    // ========== MULTI-SELECT FUNCTIONALITY ==========
-    
-    onCanvasMouseDown(e) {
-        // Check if we're clicking on a placed block first
-        const blockEl = e.target.closest('.placed-block');
-        if (blockEl) {
-            const blockId = blockEl.dataset.blockId;
-            
-            // If not holding Ctrl/Cmd, clear selection unless clicking on already selected block
-            if (!e.ctrlKey && !e.metaKey && !this.selectedBlocks.has(blockId)) {
-                this.clearSelection();
-            }
-            
-            // Toggle selection with Ctrl/Cmd
-            if (e.ctrlKey || e.metaKey) {
-                this.toggleBlockSelection(blockId);
-            } else {
-                this.selectBlock(blockId);
-            }
-            
-            // Start dragging selection
-            if (this.selectedBlocks.size > 0) {
-                this.isDraggingSelection = true;
-                this.selectionDragStart = { x: e.clientX, y: e.clientY };
-                this.saveSelectionInitialPositions();
-            }
-            return;
-        }
-        
-        // Only start box selection if clicking on empty canvas area
-        // (gridCanvas, canvasContent, canvas-placeholder, or arrowLayer)
-        const isCanvasArea = e.target === this.gridCanvas || 
-                             e.target === this.canvasContent ||
-                             e.target === this.arrowLayer ||
-                             e.target.classList.contains('canvas-placeholder') ||
-                             e.target.closest('.canvas-placeholder');
-        
-        if (!isCanvasArea) {
-            return;
-        }
-        
-        // Start box selection
-        if (e.button === 0) { // Left mouse button
-            this.isSelecting = true;
-            const canvasPos = this.screenToCanvas(e.clientX, e.clientY);
-            this.selectStart = canvasPos;
-            
-            // Clear selection if not holding Ctrl/Cmd
-            if (!e.ctrlKey && !e.metaKey) {
-                this.clearSelection();
-            }
-            
-            this.updateSelectionBox(canvasPos.x, canvasPos.y);
-            this.selectionBox.classList.remove('hidden');
-        }
-    }
-    
-    onCanvasMouseMove(e) {
-        // Handle multi-selection drag
-        if (this.isDraggingSelection && this.selectedBlocks.size > 0) {
-            const dx = (e.clientX - this.selectionDragStart.x) / this.zoomLevel;
-            const dy = (e.clientY - this.selectionDragStart.y) / this.zoomLevel;
-            
-            this.selectedBlocks.forEach(blockId => {
-                const placedBlock = this.placedBlocks.find(b => b.id === blockId);
-                const initialPos = this.selectionInitialPositions.get(blockId);
-                
-                if (placedBlock && initialPos) {
-                    const newX = this.snapToGrid(initialPos.x + dx);
-                    const newY = this.snapToGrid(initialPos.y + dy);
-                    
-                    placedBlock.x = newX;
-                    placedBlock.y = newY;
-                    placedBlock.element.style.left = `${newX}px`;
-                    placedBlock.element.style.top = `${newY}px`;
-                }
-            });
-            
-            this.renderArrows();
-            return;
-        }
-        
-        // Handle selection box
-        if (this.isSelecting) {
-            const canvasPos = this.screenToCanvas(e.clientX, e.clientY);
-            this.updateSelectionBox(canvasPos.x, canvasPos.y);
-            this.updateSelectionFromBox();
-        }
-        
-        // Handle connection temp arrow
-        if (!this.connectingFrom) return;
-        
-        const rect = this.gridCanvas.getBoundingClientRect();
-        const scrollLeft = this.gridCanvas.scrollLeft;
-        const scrollTop = this.gridCanvas.scrollTop;
-        
-        this.mouseX = (e.clientX - rect.left + scrollLeft) / this.zoomLevel;
-        this.mouseY = (e.clientY - rect.top + scrollTop) / this.zoomLevel;
-        
-        this.updateTempArrow();
-    }
-    
-    onCanvasMouseUp(e) {
-        // End selection box
-        if (this.isSelecting) {
-            this.isSelecting = false;
-            this.selectionBox.classList.add('hidden');
-        }
-        
-        // End selection drag
-        if (this.isDraggingSelection) {
-            this.isDraggingSelection = false;
-            this.savePlacedBlocks();
-            this.updateOutput();
-        }
-    }
-    
-    updateSelectionBox(currentX, currentY) {
-        const left = Math.min(this.selectStart.x, currentX);
-        const top = Math.min(this.selectStart.y, currentY);
-        const width = Math.abs(currentX - this.selectStart.x);
-        const height = Math.abs(currentY - this.selectStart.y);
-        
-        // Selection box is outside canvasContent, so we need to account for zoom
-        // The coordinates are canvas coordinates, multiply by zoom for screen position
-        const screenLeft = left * this.zoomLevel;
-        const screenTop = top * this.zoomLevel;
-        const screenWidth = width * this.zoomLevel;
-        const screenHeight = height * this.zoomLevel;
-        
-        this.selectionBox.style.left = `${screenLeft}px`;
-        this.selectionBox.style.top = `${screenTop}px`;
-        this.selectionBox.style.width = `${screenWidth}px`;
-        this.selectionBox.style.height = `${screenHeight}px`;
-    }
-    
-    updateSelectionFromBox() {
-        const boxRect = {
-            left: Math.min(this.selectStart.x, parseFloat(this.selectionBox.style.left) / this.zoomLevel),
-            top: Math.min(this.selectStart.y, parseFloat(this.selectionBox.style.top) / this.zoomLevel),
-            right: Math.max(this.selectStart.x, (parseFloat(this.selectionBox.style.left) + parseFloat(this.selectionBox.style.width)) / this.zoomLevel),
-            bottom: Math.max(this.selectStart.y, (parseFloat(this.selectionBox.style.top) + parseFloat(this.selectionBox.style.height)) / this.zoomLevel)
         };
-        
-        this.placedBlocks.forEach(block => {
-            const blockRight = block.x + 200; // Approximate width
-            const blockBottom = block.y + 80; // Approximate height
-            
-            const intersects = !(block.x > boxRect.right || 
-                                 blockRight < boxRect.left || 
-                                 block.y > boxRect.bottom || 
-                                 blockBottom < boxRect.top);
-            
-            if (intersects) {
-                this.selectBlock(block.id);
-            }
-        });
+        bind('minimizeProjectsBtn', 'projectsPanel', 'projects');
+        bind('minimizeSavedBlocksBtn', 'savedBlocksPanel', 'savedBlocks');
+        bind('minimizeOutputBtn', 'outputPanel', 'output');
     }
-    
-    selectBlock(blockId) {
-        this.selectedBlocks.add(blockId);
-        const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
-        if (blockEl) {
-            blockEl.classList.add('selected');
-        }
-    }
-    
-    deselectBlock(blockId) {
-        this.selectedBlocks.delete(blockId);
-        const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
-        if (blockEl) {
-            blockEl.classList.remove('selected');
-        }
-    }
-    
-    toggleBlockSelection(blockId) {
-        if (this.selectedBlocks.has(blockId)) {
-            this.deselectBlock(blockId);
-        } else {
-            this.selectBlock(blockId);
-        }
-    }
-    
-    clearSelection() {
-        // Clear block selection
-        this.selectedBlocks.forEach(blockId => {
-            const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
-            if (blockEl) {
-                blockEl.classList.remove('selected');
-            }
-        });
-        this.selectedBlocks.clear();
-        
-        // Clear connection selection
-        this.selectedConnections.clear();
-        this.renderArrows(); // Re-render to remove selection highlight
-    }
-    
-    selectConnection(connectionId) {
-        this.selectedConnections.add(connectionId);
-        this.renderArrows(); // Re-render to show selection highlight
-    }
-    
-    deselectConnection(connectionId) {
-        this.selectedConnections.delete(connectionId);
-        this.renderArrows(); // Re-render to remove selection highlight
-    }
-    
-    toggleConnectionSelection(connectionId) {
-        if (this.selectedConnections.has(connectionId)) {
-            this.deselectConnection(connectionId);
-        } else {
-            this.selectConnection(connectionId);
-        }
-    }
-    
-    saveSelectionInitialPositions() {
-        this.selectionInitialPositions.clear();
-        this.selectedBlocks.forEach(blockId => {
-            const placedBlock = this.placedBlocks.find(b => b.id === blockId);
-            if (placedBlock) {
-                this.selectionInitialPositions.set(blockId, { x: placedBlock.x, y: placedBlock.y });
-            }
-        });
-    }
-    
-    // ========== COPY-PASTE FUNCTIONALITY ==========
-    
-    onKeyDown(e) {
-        // Escape to cancel connection or clear selection
-        if (e.key === 'Escape') {
-            if (this.connectingFrom) {
-                this.cancelConnection();
-            }
-            this.hideArrowMenu();
-            this.clearSelection();
-        }
-        
-        // Copy: Ctrl/Cmd + C
-        if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-            e.preventDefault();
-            this.copySelected();
-        }
-        
-        // Paste: Ctrl/Cmd + V
-        if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-            e.preventDefault();
-            this.paste();
-        }
-        
-        // Delete selected blocks/connections
-        if ((e.key === 'Delete' || e.key === 'Backspace') && 
-            (this.selectedBlocks.size > 0 || this.selectedConnections.size > 0)) {
-            e.preventDefault();
-            this.deleteSelected();
-        }
-        
-        // Edit selected connection: Enter
-        if (e.key === 'Enter' && this.selectedConnections.size === 1) {
-            e.preventDefault();
-            const connId = Array.from(this.selectedConnections)[0];
-            const connection = this.connections.find(c => c.id === connId);
-            if (connection) {
-                this.editConnection(connection);
-            }
-        }
-        
-        // Select All: Ctrl/Cmd + A
-        if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-            e.preventDefault();
-            this.selectAll();
-        }
-        
-        // Undo: Ctrl/Cmd + Z
-        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-            e.preventDefault();
-            this.undo();
-        }
-        
-        // Redo: Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y
-        if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') ||
-            ((e.ctrlKey || e.metaKey) && e.key === 'y')) {
-            e.preventDefault();
-            this.redo();
-        }
-    }
-    
-    copySelected() {
-        // Support copying blocks, connections, or both
-        const hasBlocks = this.selectedBlocks.size > 0;
-        const hasConnections = this.selectedConnections.size > 0;
-        
-        if (!hasBlocks && !hasConnections) return;
-        
-        const selectedBlockIds = Array.from(this.selectedBlocks);
-        const selectedData = [];
-        
-        // Copy selected blocks
-        selectedBlockIds.forEach(blockId => {
-            const placedBlock = this.placedBlocks.find(b => b.id === blockId);
-            if (placedBlock) {
-                selectedData.push({
-                    id: blockId,
-                    type: placedBlock.type,
-                    data: JSON.parse(JSON.stringify(placedBlock.data)), // Deep copy
-                    x: placedBlock.x,
-                    y: placedBlock.y
-                });
-            }
-        });
-        
-        // Find connections to copy:
-        // 1. Selected connections (explicitly clicked)
-        // 2. Internal connections between selected blocks
-        const connectionsToCopy = new Map(); // Use Map to avoid duplicates
-        
-        // Add explicitly selected connections
-        this.selectedConnections.forEach(connId => {
-            const conn = this.connections.find(c => c.id === connId);
-            if (conn) {
-                connectionsToCopy.set(connId, {
-                    from: conn.from,
-                    to: conn.to,
-                    relationship: conn.relationship
-                });
-            }
-        });
-        
-        // Add internal connections between selected blocks
-        this.connections.forEach(conn => {
-            const fromSelected = selectedBlockIds.includes(conn.from);
-            const toSelected = selectedBlockIds.includes(conn.to);
-            
-            if (fromSelected && toSelected && !connectionsToCopy.has(conn.id)) {
-                connectionsToCopy.set(conn.id, {
-                    from: conn.from,
-                    to: conn.to,
-                    relationship: conn.relationship
-                });
-            }
-        });
-        
-        const selectedConnections = Array.from(connectionsToCopy.values());
-        
-        // Calculate offset for paste (center of selected blocks)
-        const bounds = this.getSelectionBounds(selectedData);
-        
-        this.clipboard = {
-            blocks: selectedData,
-            connections: selectedConnections,
-            bounds: bounds
-        };
-        
-        this.pasteCount = 0;
-        
-        // Visual feedback
-        const blockText = selectedData.length > 0 ? `${selectedData.length} block${selectedData.length > 1 ? 's' : ''}` : '';
-        const connText = selectedConnections.length > 0 ? `${selectedConnections.length} connection${selectedConnections.length > 1 ? 's' : ''}` : '';
-        const separator = blockText && connText ? ' and ' : '';
-        this.showToast(`Copied ${blockText}${separator}${connText}`);
-    }
-    
-    paste() {
-        if (!this.clipboard || this.clipboard.blocks.length === 0) return;
-        
-        this.pushUndoState(); // Save state for undo
-        this.pasteCount++;
-        
-        // Clear current selection
-        this.clearSelection();
-        
-        // Calculate paste position (offset from original or center of viewport)
-        const rect = this.gridCanvas.getBoundingClientRect();
-        const scrollLeft = this.gridCanvas.scrollLeft;
-        const scrollTop = this.gridCanvas.scrollTop;
-        
-        // Try to paste at center of viewport, or offset from original
-        const viewportCenterX = (scrollLeft + rect.width / 2) / this.zoomLevel;
-        const viewportCenterY = (scrollTop + rect.height / 2) / this.zoomLevel;
-        
-        const offsetX = viewportCenterX - this.clipboard.bounds.centerX + (this.pasteCount * this.clipboardOffset.x);
-        const offsetY = viewportCenterY - this.clipboard.bounds.centerY + (this.pasteCount * this.clipboardOffset.y);
-        
-        // Map old block IDs to new block IDs
-        const idMap = new Map();
-        const newBlockIds = [];
-        
-        this.clipboard.blocks.forEach(blockData => {
-            const newX = this.snapToGrid(blockData.x + offsetX);
-            const newY = this.snapToGrid(blockData.y + offsetY);
-            
-            const newBlock = this.createPlacedBlock(
-                { type: blockData.type, data: blockData.data },
-                newX,
-                newY
-            );
-            
-            if (newBlock) {
-                const newId = newBlock.dataset.blockId;
-                idMap.set(blockData.id, newId);
-                newBlockIds.push(newId);
-            }
-        });
-        
-        // Recreate connections between pasted blocks
-        let connCount = 0;
-        if (this.clipboard.connections) {
-            this.clipboard.connections.forEach(conn => {
-                const newFromId = idMap.get(conn.from);
-                const newToId = idMap.get(conn.to);
-                
-                if (newFromId && newToId) {
-                    this.createConnection(newFromId, newToId, conn.relationship);
-                    connCount++;
-                }
-            });
-        }
-        
-        // Select the newly pasted blocks
-        newBlockIds.forEach(id => this.selectBlock(id));
-        
-        const connText = connCount > 0 ? ` and ${connCount} connection${connCount > 1 ? 's' : ''}` : '';
-        this.showToast(`Pasted ${newBlockIds.length} block${newBlockIds.length > 1 ? 's' : ''}${connText}`);
-    }
-    
-    getSelectionBounds(blocks) {
-        if (blocks.length === 0) return { centerX: 0, centerY: 0 };
-        
-        let minX = Infinity, minY = Infinity;
-        let maxX = -Infinity, maxY = -Infinity;
-        
-        blocks.forEach(block => {
-            minX = Math.min(minX, block.x);
-            minY = Math.min(minY, block.y);
-            maxX = Math.max(maxX, block.x + 200); // Approximate width
-            maxY = Math.max(maxY, block.y + 80);  // Approximate height
-        });
-        
-        return {
-            minX, minY, maxX, maxY,
-            centerX: (minX + maxX) / 2,
-            centerY: (minY + maxY) / 2
-        };
-    }
-    
-    deleteSelected() {
-        const hasBlocks = this.selectedBlocks.size > 0;
-        const hasConnections = this.selectedConnections.size > 0;
-        
-        if (!hasBlocks && !hasConnections) return;
-        
-        this.pushUndoState();
-        
-        // Delete selected connections first
-        let deletedConnections = 0;
-        this.selectedConnections.forEach(connId => {
-            this.deleteConnection(connId);
-            deletedConnections++;
-        });
-        this.selectedConnections.clear();
-        
-        // Delete selected blocks
-        let deletedBlocks = 0;
-        this.selectedBlocks.forEach(blockId => {
-            this.deletePlacedBlock(blockId, false);
-            deletedBlocks++;
-        });
-        this.selectedBlocks.clear();
-        
-        // Show feedback
-        const blockText = deletedBlocks > 0 ? `${deletedBlocks} block${deletedBlocks > 1 ? 's' : ''}` : '';
-        const connText = deletedConnections > 0 ? `${deletedConnections} connection${deletedConnections > 1 ? 's' : ''}` : '';
-        const separator = blockText && connText ? ' and ' : '';
-        this.showToast(`Deleted ${blockText}${separator}${connText}`);
-    }
-    
-    deleteConnection(connectionId, showConfirm = false) {
-        if (showConfirm && !confirm('Delete this connection?')) return;
-        
-        const index = this.connections.findIndex(c => c.id === connectionId);
-        if (index === -1) return; // Connection not found
-        
-        this.connections.splice(index, 1);
-        this.selectedConnections.delete(connectionId); // Remove from selection if selected
-        this.saveConnections();
-        this.renderArrows();
-        this.updateOutput();
-    }
-    
-    selectAll() {
-        this.placedBlocks.forEach(block => {
-            this.selectBlock(block.id);
-        });
-    }
-    
-    showToast(message) {
-        // Create toast element
-        const toast = document.createElement('div');
-        toast.className = 'canvas-toast';
-        toast.textContent = message;
-        toast.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1a1a2e;
-            color: #fff;
-            padding: 10px 20px;
-            border-radius: 6px;
-            border: 1px solid #333;
-            font-size: 13px;
-            z-index: 3000;
-            animation: toast-appear 0.2s ease;
-        `;
-        
-        document.body.appendChild(toast);
-        
-        setTimeout(() => {
-            toast.style.animation = 'toast-disappear 0.2s ease';
-            setTimeout(() => toast.remove(), 200);
-        }, 2000);
-    }
-    
-    // ========== UNDO/REDO FUNCTIONALITY ==========
-    
-    pushUndoState() {
-        // Save current state
-        const state = {
-            blocks: this.placedBlocks.map(b => ({
-                id: b.id,
-                type: b.type,
-                data: JSON.parse(JSON.stringify(b.data)),
-                x: b.x,
-                y: b.y
-            })),
-            connections: JSON.parse(JSON.stringify(this.connections)),
-            blockIdCounter: this.blockIdCounter,
-            connectionIdCounter: this.connectionIdCounter
-        };
-        
-        this.undoStack.push(state);
-        
-        // Limit stack size
-        if (this.undoStack.length > this.maxUndoSize) {
-            this.undoStack.shift();
-        }
-        
-        // Clear redo stack when new action is performed
-        this.redoStack = [];
-    }
-    
-    undo() {
-        if (this.undoStack.length === 0) {
-            this.showToast('Nothing to undo');
-            return;
-        }
-        
-        // Save current state to redo stack
-        const currentState = {
-            blocks: this.placedBlocks.map(b => ({
-                id: b.id,
-                type: b.type,
-                data: JSON.parse(JSON.stringify(b.data)),
-                x: b.x,
-                y: b.y
-            })),
-            connections: JSON.parse(JSON.stringify(this.connections)),
-            blockIdCounter: this.blockIdCounter,
-            connectionIdCounter: this.connectionIdCounter
-        };
-        this.redoStack.push(currentState);
-        
-        // Restore previous state
-        const state = this.undoStack.pop();
-        this.restoreState(state);
-        
-        this.showToast('Undo');
-    }
-    
-    redo() {
-        if (this.redoStack.length === 0) {
-            this.showToast('Nothing to redo');
-            return;
-        }
-        
-        // Save current state to undo stack
-        const currentState = {
-            blocks: this.placedBlocks.map(b => ({
-                id: b.id,
-                type: b.type,
-                data: JSON.parse(JSON.stringify(b.data)),
-                x: b.x,
-                y: b.y
-            })),
-            connections: JSON.parse(JSON.stringify(this.connections)),
-            blockIdCounter: this.blockIdCounter,
-            connectionIdCounter: this.connectionIdCounter
-        };
-        this.undoStack.push(currentState);
-        
-        // Restore next state
-        const state = this.redoStack.pop();
-        this.restoreState(state);
-        
-        this.showToast('Redo');
-    }
-    
-    restoreState(state) {
-        // Clear current selection
-        this.clearSelection();
-        
-        // Remove all existing blocks from DOM
-        this.placedBlocks.forEach(block => {
-            if (block.element && block.element.parentNode) {
-                block.element.parentNode.removeChild(block.element);
-            }
-        });
-        
-        // Restore counters
-        this.blockIdCounter = state.blockIdCounter;
-        this.connectionIdCounter = state.connectionIdCounter;
-        
-        // Restore blocks
-        this.placedBlocks = [];
-        state.blocks.forEach(blockData => {
-            const block = this.createPlacedBlock(
-                { type: blockData.type, data: blockData.data },
-                blockData.x,
-                blockData.y,
-                blockData.id
-            );
-            if (block) {
-                block.dataset.blockId = blockData.id;
-            }
-        });
-        
-        // Restore connections
-        this.connections = state.connections;
-        this.saveConnections();
-        this.renderArrows();
-        
-        // Update output
-        this.updateOutput();
-        
-        // Update grid canvas state
-        if (this.placedBlocks.length > 0) {
-            this.gridCanvas.classList.add('has-blocks');
-        } else {
-            this.gridCanvas.classList.remove('has-blocks');
-        }
-    }
-    
-    startMultiDrag(e, draggedBlockId) {
-        // Start dragging all selected blocks
-        this.isDraggingSelection = true;
-        this.selectionDragStart = { x: e.clientX, y: e.clientY };
-        this.saveSelectionInitialPositions();
-        
-        // Add dragging class to all selected blocks
-        this.selectedBlocks.forEach(blockId => {
-            const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
-            if (blockEl) {
-                blockEl.classList.add('dragging');
-            }
-        });
-        
-        // Set up drag handling
-        const handleMouseMove = (moveEvent) => {
-            if (!this.isDraggingSelection) return;
-            
-            const dx = (moveEvent.clientX - this.selectionDragStart.x) / this.zoomLevel;
-            const dy = (moveEvent.clientY - this.selectionDragStart.y) / this.zoomLevel;
-            
-            // Check if hovering over delete zone for visual feedback
-            const deleteZoneRect = this.deleteZone.getBoundingClientRect();
-            const isOverDeleteZone = moveEvent.clientY >= deleteZoneRect.top && 
-                                     moveEvent.clientX >= deleteZoneRect.left && 
-                                     moveEvent.clientX <= deleteZoneRect.right;
-            
-            if (isOverDeleteZone) {
-                this.deleteZone.classList.add('drag-over');
-                document.body.classList.add('delete-zone-active');
-            } else {
-                this.deleteZone.classList.remove('drag-over');
-                document.body.classList.remove('delete-zone-active');
-            }
-            
-            this.selectedBlocks.forEach(blockId => {
-                const placedBlock = this.placedBlocks.find(b => b.id === blockId);
-                const initialPos = this.selectionInitialPositions.get(blockId);
-                
-                if (placedBlock && initialPos) {
-                    const newX = initialPos.x + dx;
-                    const newY = initialPos.y + dy;
-                    
-                    placedBlock.x = newX;
-                    placedBlock.y = newY;
-                    placedBlock.element.style.left = `${newX}px`;
-                    placedBlock.element.style.top = `${newY}px`;
-                }
-            });
-            
-            this.renderArrows();
-        };
-        
-        const handleMouseUp = (upEvent) => {
-            if (!this.isDraggingSelection) return;
-            
-            // Check if dropped on delete zone
-            const deleteZoneRect = this.deleteZone.getBoundingClientRect();
-            if (upEvent.clientY >= deleteZoneRect.top) {
-                this.deleteSelected();
-            } else {
-                // Snap to grid
-                this.selectedBlocks.forEach(blockId => {
-                    const placedBlock = this.placedBlocks.find(b => b.id === blockId);
-                    if (placedBlock) {
-                        placedBlock.x = this.snapToGrid(placedBlock.x);
-                        placedBlock.y = this.snapToGrid(placedBlock.y);
-                        placedBlock.element.style.left = `${placedBlock.x}px`;
-                        placedBlock.element.style.top = `${placedBlock.y}px`;
-                    }
-                });
-                
-                this.savePlacedBlocks();
-                this.updateOutput();
-            }
-            
-            // Remove dragging class and cleanup highlight
-            this.selectedBlocks.forEach(blockId => {
-                const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
-                if (blockEl) {
-                    blockEl.classList.remove('dragging');
-                }
-            });
-            
-            this.isDraggingSelection = false;
-            this.deleteZone.classList.remove('drag-over');
-            document.body.classList.remove('delete-zone-active');
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-        
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-    }
-    
-    // Save minimized state to localStorage
-    saveMinimizedState(panel, isMinimized) {
-        try {
-            const states = JSON.parse(localStorage.getItem('codeblocks_panel_states') || '{}');
-            states[panel] = isMinimized;
-            localStorage.setItem('codeblocks_panel_states', JSON.stringify(states));
-        } catch (e) {
-            console.warn('Failed to save panel state:', e);
-        }
-    }
-    
-    // Restore minimized states from localStorage
-    restoreMinimizedStates() {
-        try {
-            const states = JSON.parse(localStorage.getItem('codeblocks_panel_states') || '{}');
-            
-            if (states.projects) {
-                const projectsPanel = document.getElementById('projectsPanel');
-                if (projectsPanel) projectsPanel.classList.add('minimized');
-            }
-            if (states.savedBlocks) {
-                const savedBlocksPanel = document.getElementById('savedBlocksPanel');
-                if (savedBlocksPanel) savedBlocksPanel.classList.add('minimized');
-            }
-            if (states.output) {
-                const outputPanel = document.getElementById('outputPanel');
-                if (outputPanel) outputPanel.classList.add('minimized');
-            }
-        } catch (e) {
-            console.warn('Failed to restore panel states:', e);
-        }
-    }
-    
-    // Load saved blocks from localStorage
-    loadSavedBlocks() {
-        try {
-            const saved = localStorage.getItem('codeblocks_saved');
-            return saved ? JSON.parse(saved) : [];
-        } catch (e) {
-            console.warn('Failed to load saved blocks:', e);
-            return [];
-        }
-    }
-    
-    // Render sidebar with saved blocks
+
+    // ---- Zoom delegation ----
+    get zoomLevel() { return this.zoom.level; }
+    set zoomLevel(v) { this.zoom.level = v; }
+    get minZoom() { return this.zoom.min; }
+    get maxZoom() { return this.zoom.max; }
+    get zoomStep() { return this.zoom.step; }
+    zoomIn() { this.zoom.zoomIn(); }
+    zoomOut() { this.zoom.zoomOut(); }
+    resetZoom() { this.zoom.reset(); }
+    applyZoom() { this.zoom.apply(); }
+    screenToCanvas(sx, sy) { return this.zoom.screenToCanvas(sx, sy); }
+    canvasToScreen(cx, cy) { return this.zoom.canvasToScreen(cx, cy); }
+    updateArrowLayerSize() { this.zoom.updateArrowLayerSize(); }
+
+    // ---- Selection delegation ----
+    get isSelecting() { return this.selection.isSelecting; }
+    set isSelecting(v) { this.selection.isSelecting = v; }
+    get selectedBlocks() { return this.selection.selectedBlocks; }
+    get selectedConnections() { return this.selection.selectedConnections; }
+    get isDraggingSelection() { return this.selection.isDraggingSelection; }
+    set isDraggingSelection(v) { this.selection.isDraggingSelection = v; }
+    selectBlock(id) { this.selection.selectBlock(id); }
+    deselectBlock(id) { this.selection.deselectBlock(id); }
+    toggleBlockSelection(id) { this.selection.toggleBlockSelection(id); }
+    clearSelection() { this.selection.clear(); }
+    selectConnection(id) { this.selection.selectConnection(id); }
+    deselectConnection(id) { this.selection.deselectConnection(id); }
+    toggleConnectionSelection(id) { this.selection.toggleConnectionSelection(id); }
+    selectAll() { this.selection.selectAll(); }
+    saveSelectionInitialPositions() { this.selection.saveInitialPositions(); }
+    startMultiDrag(e, id) { this.selection.startMultiDrag(e, id); }
+
+    // ---- Undo delegation ----
+    pushUndoState() { this.undo.push(); }
+
+    // ---- Sidebar ----
     renderSidebar() {
         this.sidebarContent.innerHTML = '';
-        
         if (this.savedBlocks.length === 0) {
-            this.sidebarContent.innerHTML = `
-                <div class="canvas-sidebar-empty">
-                    No saved blocks<br>
-                    <small>Save blocks from the main editor</small>
-                </div>
-            `;
+            this.sidebarContent.innerHTML = `<div class="canvas-sidebar-empty">No saved blocks<br><small>Save blocks from the main editor</small></div>`;
             this.blockCountEl.textContent = '0 blocks';
             return;
         }
-        
         this.blockCountEl.textContent = `${this.savedBlocks.length} block${this.savedBlocks.length !== 1 ? 's' : ''}`;
-        
-        this.savedBlocks.forEach((savedBlock, index) => {
-            const el = this.createSidebarBlockElement(savedBlock, index);
-            this.sidebarContent.appendChild(el);
-        });
+        this.savedBlocks.forEach((sb, i) => this.sidebarContent.appendChild(this.createSidebarBlockElement(sb, i)));
     }
-    
+
     createSidebarBlockElement(savedBlock, index) {
         const el = document.createElement('div');
         el.className = `sidebar-block-item block-${savedBlock.type}`;
         el.dataset.index = index;
         el.draggable = true;
-        
-        const displayName = savedBlock.data?.name || savedBlock.type;
-        
-        el.innerHTML = `
-            <span class="sidebar-block-type">${savedBlock.type}</span>
-            <span class="sidebar-block-name" title="${displayName}">${displayName}</span>
-        `;
-        
+        const displayName = Utils.displayName(savedBlock);
+        el.innerHTML = `<span class="sidebar-block-type">${savedBlock.type}</span><span class="sidebar-block-name" title="${displayName}">${displayName}</span>`;
         el.addEventListener('dragstart', (e) => {
             this.draggedBlock = savedBlock;
             this.dragSource = 'sidebar';
             el.classList.add('dragging');
-            
             e.dataTransfer.effectAllowed = 'copy';
             e.dataTransfer.setData('source', 'sidebar');
             e.dataTransfer.setData('blockIndex', index);
             e.dataTransfer.setData('savedBlock', JSON.stringify(savedBlock));
         });
-        
-        el.addEventListener('dragend', (e) => {
+        el.addEventListener('dragend', () => {
             el.classList.remove('dragging');
             this.draggedBlock = null;
             this.dragSource = null;
         });
-        
-        el.addEventListener('click', () => {
-            this.placeBlockAtCenter(savedBlock);
-        });
-        
+        el.addEventListener('click', () => this.placeBlockAtCenter(savedBlock));
         return el;
     }
-    
+
     placeBlockAtCenter(savedBlock) {
         const rect = this.gridCanvas.getBoundingClientRect();
-        const scrollLeft = this.gridCanvas.scrollLeft;
-        const scrollTop = this.gridCanvas.scrollTop;
-        
-        const x = (scrollLeft + rect.width / 2 - 100) / this.zoomLevel;
-        const y = (scrollTop + rect.height / 2 - 50) / this.zoomLevel;
-        
+        const x = (this.gridCanvas.scrollLeft + rect.width / 2 - 100) / this.zoomLevel;
+        const y = (this.gridCanvas.scrollTop + rect.height / 2 - 50) / this.zoomLevel;
         this.createPlacedBlock(savedBlock, x, y);
     }
-    
+
+    // ---- Canvas drop ----
     onCanvasDragOver(e) {
         e.preventDefault();
         e.dataTransfer.dropEffect = this.dragSource === 'sidebar' ? 'copy' : 'move';
     }
-    
+
     onCanvasDrop(e) {
         e.preventDefault();
-        
         const source = e.dataTransfer.getData('source');
-        const canvasPos = this.screenToCanvas(e.clientX, e.clientY);
-        
-        let x = canvasPos.x;
-        let y = canvasPos.y;
-        
+        const pos = this.screenToCanvas(e.clientX, e.clientY);
         if (source === 'sidebar') {
-            const savedBlockData = e.dataTransfer.getData('savedBlock');
-            if (savedBlockData) {
-                const savedBlock = JSON.parse(savedBlockData);
-                x -= 100;
-                y -= 30;
-                this.createPlacedBlock(savedBlock, x, y);
-            }
+            const data = e.dataTransfer.getData('savedBlock');
+            if (data) this.createPlacedBlock(JSON.parse(data), pos.x - 100, pos.y - 30);
         } else if (source === 'canvas' && this.draggedBlock) {
             const blockId = this.draggedBlock.dataset.blockId;
-            const placedBlock = this.placedBlocks.find(b => b.id === blockId);
-            
-            if (placedBlock) {
-                x -= this.dragOffset.x / this.zoomLevel;
-                y -= this.dragOffset.y / this.zoomLevel;
-                
-                placedBlock.x = this.snapToGrid(x);
-                placedBlock.y = this.snapToGrid(y);
-                
-                this.draggedBlock.style.left = `${placedBlock.x}px`;
-                this.draggedBlock.style.top = `${placedBlock.y}px`;
-                
+            const placed = this.placedBlocks.find(b => b.id === blockId);
+            if (placed) {
+                placed.x = this.snapToGrid(pos.x - this.dragOffset.x / this.zoomLevel);
+                placed.y = this.snapToGrid(pos.y - this.dragOffset.y / this.zoomLevel);
+                this.draggedBlock.style.left = `${placed.x}px`;
+                this.draggedBlock.style.top = `${placed.y}px`;
                 this.savePlacedBlocks();
                 this.renderArrows();
             }
         }
-        
         this.draggedBlock = null;
         this.dragSource = null;
     }
-    
+
     snapToGrid(value) {
         return Math.round(value / this.gridSize) * this.gridSize;
     }
-    
+
+    // ---- Block creation ----
     createPlacedBlock(savedBlock, x, y, blockId = null) {
         this.gridCanvas.classList.add('has-blocks');
-        
-        const finalBlockId = blockId || `placed-${this.blockIdCounter++}`;
-        const snappedX = this.snapToGrid(x);
-        const snappedY = this.snapToGrid(y);
-        
-        const blockEl = document.createElement('div');
-        blockEl.className = `placed-block block-${savedBlock.type}`;
-        blockEl.dataset.blockId = finalBlockId;
-        blockEl.style.left = `${snappedX}px`;
-        blockEl.style.top = `${snappedY}px`;
-        
-        const displayName = savedBlock.data?.name || savedBlock.type;
-        
-        let contentHtml = '';
-        if (savedBlock.data) {
-            const fields = [];
-            if (savedBlock.data.purpose) {
-                fields.push(`<div class="placed-block-field"><strong>Purpose:</strong> ${this.truncateText(savedBlock.data.purpose, 30)}</div>`);
-            }
-            if (savedBlock.data.parameters) {
-                fields.push(`<div class="placed-block-field"><strong>Params:</strong> ${this.truncateText(savedBlock.data.parameters, 25)}</div>`);
-            }
-            if (savedBlock.data.returns) {
-                fields.push(`<div class="placed-block-field"><strong>Returns:</strong> ${savedBlock.data.returns}</div>`);
-            }
-            if (savedBlock.data.varType) {
-                fields.push(`<div class="placed-block-field"><strong>Type:</strong> ${savedBlock.data.varType}</div>`);
-            }
-            if (savedBlock.data.value) {
-                fields.push(`<div class="placed-block-field"><strong>Value:</strong> ${this.truncateText(savedBlock.data.value, 20)}</div>`);
-            }
-            if (savedBlock.data.module) {
-                fields.push(`<div class="placed-block-field"><strong>Module:</strong> ${savedBlock.data.module}</div>`);
-            }
-            contentHtml = fields.join('');
-        }
-        
-        blockEl.innerHTML = `
+        const finalId = blockId || `placed-${this.blockIdCounter++}`;
+        const sx = this.snapToGrid(x);
+        const sy = this.snapToGrid(y);
+
+        const el = document.createElement('div');
+        el.className = `placed-block block-${savedBlock.type}`;
+        el.dataset.blockId = finalId;
+        el.style.left = `${sx}px`;
+        el.style.top = `${sy}px`;
+
+        const displayName = Utils.displayName(savedBlock);
+        const fields = [];
+        const d = savedBlock.data;
+        if (d?.purpose) fields.push(`<div class="placed-block-field"><strong>Purpose:</strong> ${Utils.truncate(d.purpose, 30)}</div>`);
+        if (d?.parameters) fields.push(`<div class="placed-block-field"><strong>Params:</strong> ${Utils.truncate(d.parameters, 25)}</div>`);
+        if (d?.returns) fields.push(`<div class="placed-block-field"><strong>Returns:</strong> ${d.returns}</div>`);
+        if (d?.varType) fields.push(`<div class="placed-block-field"><strong>Type:</strong> ${d.varType}</div>`);
+        if (d?.value) fields.push(`<div class="placed-block-field"><strong>Value:</strong> ${Utils.truncate(d.value, 20)}</div>`);
+        if (d?.module) fields.push(`<div class="placed-block-field"><strong>Module:</strong> ${d.module}</div>`);
+        const contentHtml = fields.join('');
+
+        el.innerHTML = `
             <div class="placed-block-header">
                 <span class="placed-block-type">${savedBlock.type}</span>
                 <span class="placed-block-name" title="${displayName}">${displayName}</span>
@@ -1264,413 +252,322 @@ class GridCanvas {
             </div>
             ${contentHtml ? `<div class="placed-block-content">${contentHtml}</div>` : ''}
         `;
-        
-        // Delete button
-        blockEl.querySelector('.placed-block-delete').addEventListener('click', (e) => {
+
+        el.querySelector('.placed-block-delete').addEventListener('click', (e) => {
             e.stopPropagation();
-            this.deletePlacedBlock(finalBlockId);
+            this.deletePlacedBlock(finalId);
         });
-        
-        // Connect button
-        blockEl.querySelector('.placed-block-connect').addEventListener('click', (e) => {
+        el.querySelector('.placed-block-connect').addEventListener('click', (e) => {
             e.stopPropagation();
-            this.startConnection(finalBlockId);
+            this.startConnection(finalId);
         });
-        
-        // Make draggable
-        blockEl.draggable = true;
-        blockEl.addEventListener('dragstart', (e) => {
-            // Don't drag if we're in connecting mode
-            if (this.connectingFrom) {
+
+        el.draggable = true;
+        el.addEventListener('dragstart', (e) => {
+            if (this.connectingFrom) { e.preventDefault(); return; }
+            if (this.selectedBlocks.size > 1 && this.selectedBlocks.has(finalId)) {
                 e.preventDefault();
+                this.startMultiDrag(e, finalId);
                 return;
             }
-            
-            // If this block is selected as part of multi-selection, use multi-drag instead
-            if (this.selectedBlocks.size > 1 && this.selectedBlocks.has(finalBlockId)) {
-                e.preventDefault();
-                this.startMultiDrag(e, finalBlockId);
-                return;
-            }
-            
-            this.draggedBlock = blockEl;
+            this.draggedBlock = el;
             this.dragSource = 'canvas';
-            blockEl.classList.add('dragging');
-            
-            const rect = blockEl.getBoundingClientRect();
+            el.classList.add('dragging');
+            const rect = el.getBoundingClientRect();
             this.dragOffset.x = e.clientX - rect.left;
             this.dragOffset.y = e.clientY - rect.top;
-            
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('source', 'canvas');
-            e.dataTransfer.setData('blockId', finalBlockId);
+            e.dataTransfer.setData('blockId', finalId);
         });
-        
-        blockEl.addEventListener('dragend', (e) => {
-            blockEl.classList.remove('dragging');
+        el.addEventListener('dragend', () => el.classList.remove('dragging'));
+        el.addEventListener('click', (e) => {
+            if (this.connectingFrom && this.connectingFrom !== finalId) this.completeConnection(finalId);
         });
-        
-        // Click to select as connection target
-        blockEl.addEventListener('click', (e) => {
-            if (this.connectingFrom && this.connectingFrom !== finalBlockId) {
-                this.completeConnection(finalBlockId);
-            }
-        });
-        
-        this.canvasContent.appendChild(blockEl);
-        
-        this.placedBlocks.push({
-            id: finalBlockId,
-            type: savedBlock.type,
-            data: savedBlock.data,
-            x: snappedX,
-            y: snappedY,
-            element: blockEl
-        });
-        
+
+        this.canvasContent.appendChild(el);
+        this.placedBlocks.push({ id: finalId, type: savedBlock.type, data: savedBlock.data, x: sx, y: sy, element: el });
         this.savePlacedBlocks();
         this.updateOutput();
-        
-        return blockEl;
+        return el;
     }
-    
-    truncateText(text, maxLength) {
-        if (!text || text.length <= maxLength) return text || '';
-        return text.substring(0, maxLength) + '...';
-    }
-    
-    // Start creating a connection from a block
+
+    // ---- Connections ----
     startConnection(blockId) {
-        if (this.connectingFrom) {
-            // Cancel previous connection
-            this.cancelConnection();
-        }
-        
-        // Clear any selection to prevent accidental deletion while typing
+        if (this.connectingFrom) this.cancelConnection();
         this.clearSelection();
-        
         this.connectingFrom = blockId;
-        
-        // Visual feedback
-        const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
-        if (blockEl) {
-            blockEl.classList.add('connecting');
-        }
-        
-        // Update hint
+        document.querySelector(`[data-block-id="${blockId}"]`)?.classList.add('connecting');
         this.canvasHint.textContent = 'Click another block to connect, or press Escape to cancel';
         this.canvasHint.classList.add('connecting');
-        
-        // Create temporary arrow
         this.createTempArrow();
     }
-    
-    // Create temporary arrow that follows cursor
+
     createTempArrow() {
-        const fromBlock = this.placedBlocks.find(b => b.id === this.connectingFrom);
-        if (!fromBlock) return;
-        
+        const from = this.placedBlocks.find(b => b.id === this.connectingFrom);
+        if (!from) return;
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
         path.classList.add('temp-arrow');
         this.arrowLayer.appendChild(path);
         this.tempArrow = path;
-        
         this.updateTempArrow();
     }
-    
-    // Update temporary arrow position
+
     updateTempArrow() {
         if (!this.tempArrow || !this.connectingFrom) return;
-        
-        const fromBlock = this.placedBlocks.find(b => b.id === this.connectingFrom);
-        if (!fromBlock) return;
-        
-        const fromW = fromBlock.element.offsetWidth;
-        const fromH = fromBlock.element.offsetHeight;
-        const fromCx = fromBlock.x + fromW / 2;
-        const fromCy = fromBlock.y + fromH / 2;
-        
-        const mx = this.mouseX || fromCx + 100;
-        const my = this.mouseY || fromCy;
-        
-        // Start from the edge of the source block facing the mouse
-        const start = this.getEdgeIntersection(fromCx, fromCy, mx, my, fromBlock.x, fromBlock.y, fromW, fromH);
-        
-        const path = this.tempArrow;
-        path.setAttribute('d', `M ${start.x} ${start.y} L ${mx} ${my}`);
+        const from = this.placedBlocks.find(b => b.id === this.connectingFrom);
+        if (!from) return;
+        const w = from.element.offsetWidth, h = from.element.offsetHeight;
+        const cx = from.x + w / 2, cy = from.y + h / 2;
+        const mx = this.mouseX || cx + 100, my = this.mouseY || cy;
+        const start = this.getEdgeIntersection(cx, cy, mx, my, from.x, from.y, w, h);
+        this.tempArrow.setAttribute('d', `M ${start.x} ${start.y} L ${mx} ${my}`);
     }
-    
-    // Track mouse position for temp arrow (called from main onCanvasMouseMove)
+
     trackMouseForTempArrow(e) {
         if (!this.connectingFrom) return;
-        
         const rect = this.gridCanvas.getBoundingClientRect();
-        const scrollLeft = this.gridCanvas.scrollLeft;
-        const scrollTop = this.gridCanvas.scrollTop;
-        
-        this.mouseX = (e.clientX - rect.left + scrollLeft) / this.zoomLevel;
-        this.mouseY = (e.clientY - rect.top + scrollTop) / this.zoomLevel;
-        
+        this.mouseX = (e.clientX - rect.left + this.gridCanvas.scrollLeft) / this.zoomLevel;
+        this.mouseY = (e.clientY - rect.top + this.gridCanvas.scrollTop) / this.zoomLevel;
         this.updateTempArrow();
     }
-    
-    // Handle clicks on canvas (cancel connection if clicking empty space)
+
+    onCanvasMouseMove(e) {
+        this.trackMouseForTempArrow(e);
+    }
+
     onCanvasClick(e) {
-        // Hide arrow menu when clicking elsewhere
-        if (!e.target.closest('.arrow-menu')) {
-            this.hideArrowMenu();
-        }
-        
-        // Check if clicking on empty canvas area (not on a block or connection)
+        if (!e.target.closest('.arrow-menu')) this.hideArrowMenu();
         const isBlock = e.target.closest('.placed-block');
-        const isConnection = e.target.closest('.connection-group');
-        const isArrowMenu = e.target.closest('.arrow-menu');
-        
-        // If we're in connecting mode and clicked on empty space, cancel connection
-        if (this.connectingFrom && !isBlock && !isConnection && !isArrowMenu) {
+        const isConn = e.target.closest('.connection-group');
+        const isMenu = e.target.closest('.arrow-menu');
+        if (this.connectingFrom && !isBlock && !isConn && !isMenu) {
             this.cancelConnection();
             return;
         }
-        
-        // Original behavior: cancel connection when clicking canvas background
         if (e.target === this.gridCanvas || e.target.classList.contains('canvas-placeholder')) {
             this.cancelConnection();
         }
     }
-    
-    // Complete connection to target block
-    completeConnection(targetBlockId) {
-        if (!this.connectingFrom || this.connectingFrom === targetBlockId) {
+
+    completeConnection(targetId) {
+        if (!this.connectingFrom || this.connectingFrom === targetId) {
             this.cancelConnection();
             return;
         }
-        
-        // Check if connection already exists
-        const existingConnection = this.connections.find(
-            c => c.from === this.connectingFrom && c.to === targetBlockId
-        );
-        
-        if (existingConnection) {
+        if (this.connections.some(c => c.from === this.connectingFrom && c.to === targetId)) {
             alert('Connection already exists between these blocks!');
             this.cancelConnection();
             return;
         }
-        
-        // Hide any arrow menu
         this.hideArrowMenu();
-        
-        // Show modal to define relationship
-        const fromBlock = this.placedBlocks.find(b => b.id === this.connectingFrom);
-        const toBlock = this.placedBlocks.find(b => b.id === targetBlockId);
-        
-        if (fromBlock && toBlock) {
-            // Clear selection before showing modal to prevent accidental deletion
+        const from = this.placedBlocks.find(b => b.id === this.connectingFrom);
+        const to = this.placedBlocks.find(b => b.id === targetId);
+        if (from && to) {
             this.clearSelection();
-            
-            this.fromBlockNameEl.textContent = fromBlock.data?.name || fromBlock.type;
-            this.toBlockNameEl.textContent = toBlock.data?.name || toBlock.type;
+            this.fromBlockNameEl.textContent = Utils.displayName(from);
+            this.toBlockNameEl.textContent = Utils.displayName(to);
             this.relationshipInput.value = '';
-            
             this.relationshipModal.classList.remove('hidden');
             this.relationshipInput.focus();
-            
-            // Store pending connection
-            this.pendingConnection = {
-                from: this.connectingFrom,
-                to: targetBlockId
-            };
+            this.pendingConnection = { from: this.connectingFrom, to: targetId };
         }
     }
-    
-    // Confirm and create the connection
+
     confirmConnection() {
-        if (!this.pendingConnection) {
-            this.cancelConnection();
-            return;
-        }
-        
+        if (!this.pendingConnection) { this.cancelConnection(); return; }
         this.pushUndoState();
-        
-        const relationship = this.relationshipInput.value.trim() || 'connects to';
-        
-        this.createConnection(
-            this.pendingConnection.from,
-            this.pendingConnection.to,
-            relationship
-        );
-        
+        const label = this.relationshipInput.value.trim() || 'connects to';
+        this.createConnection(this.pendingConnection.from, this.pendingConnection.to, label);
         this.cancelConnection();
     }
-    
+
     createConnection(fromId, toId, label) {
-        // Generate truly unique ID using timestamp + random
-        const connection = {
+        const conn = {
             id: `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            from: fromId,
-            to: toId,
-            relationship: label
+            from: fromId, to: toId, relationship: label
         };
-        
-        this.connections.push(connection);
+        this.connections.push(conn);
         this.saveConnections();
         this.renderArrows();
         this.updateOutput();
-        
-        return connection;
+        return conn;
     }
-    
-    // Cancel the current connection operation
+
     cancelConnection() {
         this.relationshipModal.classList.add('hidden');
         this.cleanupConnection();
     }
-    
-    // Clean up connection state
+
     cleanupConnection() {
         if (this.connectingFrom) {
-            const blockEl = document.querySelector(`[data-block-id="${this.connectingFrom}"]`);
-            if (blockEl) {
-                blockEl.classList.remove('connecting');
-            }
+            document.querySelector(`[data-block-id="${this.connectingFrom}"]`)?.classList.remove('connecting');
         }
-        
-        if (this.tempArrow) {
-            this.tempArrow.remove();
-            this.tempArrow = null;
-        }
-        
+        this.tempArrow?.remove();
+        this.tempArrow = null;
         this.connectingFrom = null;
         this.pendingConnection = null;
         this.canvasHint.textContent = 'Drag blocks from sidebar to place • Click block to connect';
         this.canvasHint.classList.remove('connecting');
     }
-    
-    // Show arrow context menu
-    showArrowMenu(connection, event) {
-        // Hide any existing menu
+
+    // ---- Arrow rendering ----
+    renderArrows() {
         this.hideArrowMenu();
-        
-        // Create menu
+        this.arrowLayer.querySelectorAll('.connection-group').forEach(g => g.remove());
+        this.connections.forEach(c => this.renderConnection(c));
+    }
+
+    getEdgeIntersection(Ax, Ay, Bx, By, rx, ry, rw, rh) {
+        const dx = Bx - Ax, dy = By - Ay;
+        let t = Infinity;
+        if (dx > 0) t = Math.min(t, (rx + rw - Ax) / dx);
+        else if (dx < 0) t = Math.min(t, (rx - Ax) / dx);
+        if (dy > 0) t = Math.min(t, (ry + rh - Ay) / dy);
+        else if (dy < 0) t = Math.min(t, (ry - Ay) / dy);
+        return { x: Ax + t * dx, y: Ay + t * dy };
+    }
+
+    renderConnection(connection) {
+        const from = this.placedBlocks.find(b => b.id === connection.from);
+        const to = this.placedBlocks.find(b => b.id === connection.to);
+        if (!from || !to) return;
+
+        const fw = from.element.offsetWidth, fh = from.element.offsetHeight;
+        const tw = to.element.offsetWidth, th = to.element.offsetHeight;
+        const fcx = from.x + fw / 2, fcy = from.y + fh / 2;
+        const tcx = to.x + tw / 2, tcy = to.y + th / 2;
+
+        const start = this.getEdgeIntersection(fcx, fcy, tcx, tcy, from.x, from.y, fw, fh);
+        const end = this.getEdgeIntersection(tcx, tcy, fcx, fcy, to.x, to.y, tw, th);
+
+        const pathD = `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.classList.add('connection-group');
+        group.dataset.connectionId = connection.id;
+        group.style.cursor = 'pointer';
+
+        const mkPath = (stroke, width, events) => {
+            const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            p.setAttribute('d', pathD);
+            p.setAttribute('stroke', stroke);
+            p.setAttribute('stroke-width', width);
+            p.setAttribute('fill', 'none');
+            if (!events) p.style.pointerEvents = 'none';
+            else { p.style.pointerEvents = 'stroke'; p.style.cursor = 'pointer'; }
+            return p;
+        };
+
+        group.appendChild(mkPath('transparent', '24', true));
+        const visible = mkPath('#4a90d9', '2', false);
+        visible.setAttribute('marker-end', 'url(#arrowhead)');
+        group.appendChild(visible);
+
+        group.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (e.ctrlKey || e.metaKey) this.toggleConnectionSelection(connection.id);
+            else { this.clearSelection(); this.showArrowMenu(connection, e); }
+        });
+
+        if (this.selectedConnections.has(connection.id)) {
+            group.classList.add('selected');
+            visible.setAttribute('stroke', '#f59e0b');
+            visible.setAttribute('stroke-width', '3');
+        }
+
+        this.arrowLayer.appendChild(group);
+        if (connection.relationship) {
+            this.renderArrowLabel((start.x + end.x) / 2, (start.y + end.y) / 2, connection.relationship, group);
+        }
+    }
+
+    renderArrowLabel(x, y, text, parent) {
+        const pad = 6, cw = 6;
+        const w = text.length * cw + pad * 2, h = 18;
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', x - w / 2);
+        rect.setAttribute('y', y - h / 2);
+        rect.setAttribute('width', w);
+        rect.setAttribute('height', h);
+        rect.setAttribute('class', 'arrow-label-bg');
+        rect.style.pointerEvents = 'none';
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', x);
+        label.setAttribute('y', y + 1);
+        label.setAttribute('class', 'arrow-label');
+        label.textContent = text;
+        label.style.pointerEvents = 'none';
+        parent.appendChild(rect);
+        parent.appendChild(label);
+    }
+
+    // ---- Arrow menu ----
+    showArrowMenu(connection, event) {
+        this.hideArrowMenu();
         const menu = document.createElement('div');
         menu.className = 'arrow-menu';
         menu.id = 'arrowMenu';
-        
-        const fromBlock = this.placedBlocks.find(b => b.id === connection.from);
-        const toBlock = this.placedBlocks.find(b => b.id === connection.to);
-        const fromName = fromBlock?.data?.name || fromBlock?.type || 'Unknown';
-        const toName = toBlock?.data?.name || toBlock?.type || 'Unknown';
-        
-        menu.innerHTML = `
-            <div class="arrow-menu-header">${fromName} → ${toName}</div>
-            <div class="arrow-menu-item" data-action="edit">✏️ Edit</div>
-            <div class="arrow-menu-item" data-action="delete">🗑️ Delete</div>
-        `;
-        
-        // Position menu near click
+        const from = this.placedBlocks.find(b => b.id === connection.from);
+        const to = this.placedBlocks.find(b => b.id === connection.to);
+        const fromName = Utils.displayName(from) || 'Unknown';
+        const toName = Utils.displayName(to) || 'Unknown';
+        menu.innerHTML = `<div class="arrow-menu-header">${fromName} → ${toName}</div><div class="arrow-menu-item" data-action="edit">✏️ Edit</div><div class="arrow-menu-item" data-action="delete">🗑️ Delete</div>`;
         const rect = this.gridCanvas.getBoundingClientRect();
         let x = event.clientX - rect.left + this.gridCanvas.scrollLeft;
         let y = event.clientY - rect.top + this.gridCanvas.scrollTop;
-        
         menu.style.left = `${x}px`;
         menu.style.top = `${y}px`;
-        
-        // Add click handlers
         menu.querySelectorAll('.arrow-menu-item').forEach(item => {
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const action = item.dataset.action;
-                if (action === 'edit') {
-                    this.editConnection(connection);
-                } else if (action === 'delete') {
-                    this.deleteConnection(connection.id, true); // Show confirm
-                }
+                if (action === 'edit') this.editConnection(connection);
+                else if (action === 'delete') this.deleteConnection(connection.id, true);
                 this.hideArrowMenu();
             });
         });
-        
         this.gridCanvas.appendChild(menu);
-        
-        // Adjust position if menu goes off screen
-        const menuRect = menu.getBoundingClientRect();
-        if (menuRect.right > rect.right) {
-            menu.style.left = `${x - menuRect.width}px`;
-        }
-        if (menuRect.bottom > rect.bottom) {
-            menu.style.top = `${y - menuRect.height}px`;
-        }
+        const mr = menu.getBoundingClientRect();
+        if (mr.right > rect.right) menu.style.left = `${x - mr.width}px`;
+        if (mr.bottom > rect.bottom) menu.style.top = `${y - mr.height}px`;
     }
-    
-    // Hide arrow menu
+
     hideArrowMenu() {
-        const existing = document.getElementById('arrowMenu');
-        if (existing) existing.remove();
+        document.getElementById('arrowMenu')?.remove();
     }
-    
-    // Edit connection relationship with inline textbox
+
+    // ---- Inline editor ----
     editConnection(connection) {
-        const fromBlock = this.placedBlocks.find(b => b.id === connection.from);
-        const toBlock = this.placedBlocks.find(b => b.id === connection.to);
-        if (!fromBlock || !toBlock) return;
-
-        // Compute the same edge points used when rendering the arrow
-        const fromW = fromBlock.element.offsetWidth;
-        const fromH = fromBlock.element.offsetHeight;
-        const toW = toBlock.element.offsetWidth;
-        const toH = toBlock.element.offsetHeight;
-        const fromCx = fromBlock.x + fromW / 2;
-        const fromCy = fromBlock.y + fromH / 2;
-        const toCx = toBlock.x + toW / 2;
-        const toCy = toBlock.y + toH / 2;
-        
-        const start = this.getEdgeIntersection(fromCx, fromCy, toCx, toCy, fromBlock.x, fromBlock.y, fromW, fromH);
-        const end = this.getEdgeIntersection(toCx, toCy, fromCx, fromCy, toBlock.x, toBlock.y, toW, toH);
-        
-        const centerX = (start.x + end.x) / 2;
-        const centerY = (start.y + end.y) / 2;
-
-        // Remove any existing inline editor
+        const from = this.placedBlocks.find(b => b.id === connection.from);
+        const to = this.placedBlocks.find(b => b.id === connection.to);
+        if (!from || !to) return;
+        const fw = from.element.offsetWidth, fh = from.element.offsetHeight;
+        const tw = to.element.offsetWidth, th = to.element.offsetHeight;
+        const fcx = from.x + fw / 2, fcy = from.y + fh / 2;
+        const tcx = to.x + tw / 2, tcy = to.y + th / 2;
+        const start = this.getEdgeIntersection(fcx, fcy, tcx, tcy, from.x, from.y, fw, fh);
+        const end = this.getEdgeIntersection(tcx, tcy, fcx, fcy, to.x, to.y, tw, th);
+        const cx = (start.x + end.x) / 2, cy = (start.y + end.y) / 2;
         this.hideInlineEditor();
-
         const input = document.createElement('input');
         input.type = 'text';
         input.className = 'arrow-inline-editor';
         input.value = connection.relationship || '';
         input.placeholder = 'connects to';
-
-        // Position at center of arrow
-        input.style.left = `${centerX}px`;
-        input.style.top = `${centerY - 14}px`;
-
+        input.style.left = `${cx}px`;
+        input.style.top = `${cy - 14}px`;
         const save = () => {
-            const value = input.value.trim();
-            connection.relationship = value || 'connects to';
+            connection.relationship = input.value.trim() || 'connects to';
             this.hideInlineEditor();
             this.saveConnections();
             this.renderArrows();
             this.updateOutput();
         };
-
-        const cancel = () => {
-            this.hideInlineEditor();
-        };
-
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                save();
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                cancel();
-            }
+            if (e.key === 'Enter') { e.preventDefault(); save(); }
+            else if (e.key === 'Escape') { e.preventDefault(); this.hideInlineEditor(); }
         });
-
-        input.addEventListener('blur', () => {
-            // Only save if the input is still in the DOM (not cancelled/removed already)
-            if (input.parentNode) {
-                save();
-            }
-        });
-
+        input.addEventListener('blur', () => { if (input.parentNode) save(); });
         this.canvasContent.appendChild(input);
         input.focus();
         input.select();
@@ -1678,732 +575,717 @@ class GridCanvas {
     }
 
     hideInlineEditor() {
-        if (this.arrowInlineEditor) {
-            this.arrowInlineEditor.remove();
-            this.arrowInlineEditor = null;
-        }
+        this.arrowInlineEditor?.remove();
+        this.arrowInlineEditor = null;
     }
-    
-    // Render all connection arrows
-    renderArrows() {
-        // Hide any arrow menu
-        this.hideArrowMenu();
-        
-        // Clear existing connection groups
-        const existingGroups = this.arrowLayer.querySelectorAll('.connection-group');
-        existingGroups.forEach(group => group.remove());
-        
-        // Clear existing standalone labels (for backwards compatibility)
-        const existingLabels = this.arrowLayer.querySelectorAll('rect, text');
-        existingLabels.forEach(label => label.remove());
-        
-        // Render each connection
-        this.connections.forEach(conn => {
-            this.renderConnection(conn);
-        });
-    }
-    
-    // Simple ray-box intersection: find where the line from outside point A
-    // to inside point B first hits the rectangle bounds.
-    getEdgeIntersection(Ax, Ay, Bx, By, rectX, rectY, rectW, rectH) {
-        const dx = Bx - Ax;
-        const dy = By - Ay;
-        let t = Infinity;
-        
-        if (dx > 0) {
-            t = Math.min(t, (rectX + rectW - Ax) / dx);
-        } else if (dx < 0) {
-            t = Math.min(t, (rectX - Ax) / dx);
-        }
-        
-        if (dy > 0) {
-            t = Math.min(t, (rectY + rectH - Ay) / dy);
-        } else if (dy < 0) {
-            t = Math.min(t, (rectY - Ay) / dy);
-        }
-        
-        return {
-            x: Ax + t * dx,
-            y: Ay + t * dy
-        };
-    }
-    
-    // Render a single connection
-    renderConnection(connection) {
-        const fromBlock = this.placedBlocks.find(b => b.id === connection.from);
-        const toBlock = this.placedBlocks.find(b => b.id === connection.to);
-        
-        if (!fromBlock || !toBlock) return;
-        
-        // Get actual block dimensions from DOM
-        const fromW = fromBlock.element.offsetWidth;
-        const fromH = fromBlock.element.offsetHeight;
-        const toW = toBlock.element.offsetWidth;
-        const toH = toBlock.element.offsetHeight;
-        
-        // Calculate centers
-        const fromCx = fromBlock.x + fromW / 2;
-        const fromCy = fromBlock.y + fromH / 2;
-        const toCx = toBlock.x + toW / 2;
-        const toCy = toBlock.y + toH / 2;
-        
-        // Line goes from source center to target center, but we clip it at each block's edge.
-        // This makes the arrowhead sit on the edge while pointing toward the center.
-        const start = this.getEdgeIntersection(fromCx, fromCy, toCx, toCy, fromBlock.x, fromBlock.y, fromW, fromH);
-        const end = this.getEdgeIntersection(toCx, toCy, fromCx, fromCy, toBlock.x, toBlock.y, toW, toH);
-        
-        const startX = start.x;
-        const startY = start.y;
-        const endX = end.x;
-        const endY = end.y;
-        
-        // Create a group for the connection
-        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        group.classList.add('connection-group');
-        group.dataset.connectionId = connection.id;
-        group.style.cursor = 'pointer';
-        
-        // Straight line from edge to edge guarantees the arrowhead always points
-        // exactly toward the target center (and vice versa) regardless of angle.
-        const pathD = `M ${startX} ${startY} L ${endX} ${endY}`;
-        
-        // Create a wider invisible background path for easier clicking/hovering
-        const bgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        bgPath.setAttribute('d', pathD);
-        bgPath.setAttribute('stroke', 'transparent');
-        bgPath.setAttribute('stroke-width', '150'); // wider for easier selection
-        bgPath.setAttribute('fill', 'none');
-        bgPath.style.pointerEvents = 'stroke';
-        bgPath.style.cursor = 'pointer';
-        
-        // Create invisible hit path for clicking (medium width)
-        const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        hitPath.setAttribute('d', pathD);
-        hitPath.setAttribute('stroke', 'transparent');
-        hitPath.setAttribute('stroke-width', '100'); // wider for easier selection
-        hitPath.setAttribute('fill', 'none');
-        hitPath.style.pointerEvents = 'stroke';
-        
-        // Create visible path
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', pathD);
-        path.setAttribute('stroke', '#4a90d9');
-        path.setAttribute('stroke-width', '2');
-        path.setAttribute('fill', 'none');
-        path.setAttribute('marker-end', 'url(#arrowhead)');
-        path.style.pointerEvents = 'none';
-        
-        group.appendChild(bgPath);   // Widest - for easy hovering
-        group.appendChild(hitPath);  // Medium - for clicking
-        group.appendChild(path);     // Visible line
-        
-        // Click handler - select connection or show menu
-        group.addEventListener('click', (e) => {
-            e.stopPropagation();
-            
-            // Toggle selection with Ctrl/Cmd, otherwise just show menu
-            if (e.ctrlKey || e.metaKey) {
-                this.toggleConnectionSelection(connection.id);
-            } else {
-                // Clear block selection when clicking connection
-                this.clearSelection();
-                this.showArrowMenu(connection, e);
-            }
-        });
-        
-        // Apply selected state
-        if (this.selectedConnections.has(connection.id)) {
-            group.classList.add('selected');
-            path.setAttribute('stroke', '#f59e0b'); // Orange for selected
-            path.setAttribute('stroke-width', '3');
-        }
-        
-        this.arrowLayer.appendChild(group);
-        
-        // Add label if relationship exists
-        if (connection.relationship) {
-            this.renderArrowLabel((startX + endX) / 2, (startY + endY) / 2, connection.relationship, group);
-        }
-    }
-    
-    // Render label for arrow
-    renderArrowLabel(x, y, text, parentGroup) {
-        const padding = 6;
-        const charWidth = 6;
-        const textWidth = text.length * charWidth + padding * 2;
-        const textHeight = 18;
-        
-        // Background rect
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', x - textWidth / 2);
-        rect.setAttribute('y', y - textHeight / 2);
-        rect.setAttribute('width', textWidth);
-        rect.setAttribute('height', textHeight);
-        rect.setAttribute('class', 'arrow-label-bg');
-        rect.style.pointerEvents = 'none';
-        
-        // Text
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', x);
-        label.setAttribute('y', y + 1); // Slight adjustment for vertical centering
-        label.setAttribute('class', 'arrow-label');
-        label.textContent = text;
-        label.style.pointerEvents = 'none';
-        
-        if (parentGroup) {
-            parentGroup.appendChild(rect);
-            parentGroup.appendChild(label);
-        } else {
-            this.arrowLayer.appendChild(rect);
-            this.arrowLayer.appendChild(label);
-        }
-    }
-    
+
+    // ---- Deletion ----
     deletePlacedBlock(blockId, saveUndo = true) {
-        if (saveUndo) {
-            this.pushUndoState();
-        }
-        
-        // Remove connections to/from this block
+        if (saveUndo) this.pushUndoState();
         this.connections = this.connections.filter(c => c.from !== blockId && c.to !== blockId);
-        
-        const blockEl = document.querySelector(`[data-block-id="${blockId}"]`);
-        if (blockEl) {
-            blockEl.remove();
-        }
-        
+        document.querySelector(`[data-block-id="${blockId}"]`)?.remove();
         this.placedBlocks = this.placedBlocks.filter(b => b.id !== blockId);
-        
-        if (this.placedBlocks.length === 0) {
-            this.gridCanvas.classList.remove('has-blocks');
-        }
-        
+        if (this.placedBlocks.length === 0) this.gridCanvas.classList.remove('has-blocks');
         this.savePlacedBlocks();
         this.saveConnections();
         this.renderArrows();
         this.updateOutput();
     }
-    
+
+    deleteConnection(connectionId, showConfirm = false) {
+        if (showConfirm && !confirm('Delete this connection?')) return;
+        const idx = this.connections.findIndex(c => c.id === connectionId);
+        if (idx === -1) return;
+        this.connections.splice(idx, 1);
+        this.selectedConnections.delete(connectionId);
+        this.saveConnections();
+        this.renderArrows();
+        this.updateOutput();
+    }
+
     onDeleteZoneDragOver(e) {
         e.preventDefault();
-        // Accept drops from canvas blocks or when items are selected
         if (this.dragSource === 'canvas' || this.selectedBlocks.size > 0 || this.selectedConnections.size > 0) {
             e.dataTransfer.dropEffect = 'move';
             this.deleteZone.classList.add('drag-over');
             document.body.classList.add('delete-zone-active');
         }
     }
-    
+
     onDeleteZoneDragLeave(e) {
         this.deleteZone.classList.remove('drag-over');
         document.body.classList.remove('delete-zone-active');
     }
-    
+
     onDeleteZoneDrop(e) {
         e.preventDefault();
         this.deleteZone.classList.remove('drag-over');
         document.body.classList.remove('delete-zone-active');
-        
         const source = e.dataTransfer.getData('source');
         const blockId = e.dataTransfer.getData('blockId');
         const connectionId = e.dataTransfer.getData('connectionId');
-        
         this.pushUndoState();
-        
         if (source === 'canvas' && blockId) {
-            // Delete a single dragged block
             this.deletePlacedBlock(blockId, false);
             this.showToast('Block deleted');
         } else if (source === 'canvas' && connectionId) {
-            // Delete a single dragged connection
             this.deleteConnection(connectionId);
             this.showToast('Connection deleted');
         } else if (this.selectedBlocks.size > 0 || this.selectedConnections.size > 0) {
-            // Delete all selected items
             this.deleteSelected();
         }
-        
         this.draggedBlock = null;
         this.dragSource = null;
     }
-    
+
     clearCanvas() {
         if (this.placedBlocks.length === 0) return;
-        
         if (!confirm('Clear all blocks and connections from canvas?')) return;
-        
         this.pushUndoState();
-        
-        this.placedBlocks.forEach(block => {
-            const el = document.querySelector(`[data-block-id="${block.id}"]`);
-            if (el) el.remove();
-        });
-        
+        this.placedBlocks.forEach(b => document.querySelector(`[data-block-id="${b.id}"]`)?.remove());
         this.placedBlocks = [];
         this.connections = [];
         this.gridCanvas.classList.remove('has-blocks');
-        
         this.savePlacedBlocks();
         this.saveConnections();
         this.renderArrows();
         this.updateOutput();
     }
-    
-    // Generate and update JSON output
-    updateOutput() {
-        const output = this.generateSystemJSON();
-        this.canvasOutput.textContent = JSON.stringify(output, null, 2);
+
+    clearCanvasWithoutConfirm() {
+        this.placedBlocks.forEach(b => document.querySelector(`[data-block-id="${b.id}"]`)?.remove());
+        this.placedBlocks = [];
+        this.connections = [];
+        this.gridCanvas.classList.remove('has-blocks');
+        this.savePlacedBlocks();
+        this.saveConnections();
+        this.renderArrows();
+        this.updateOutput();
     }
-    
-    generateSystemJSON() {
-        if (this.placedBlocks.length === 0) {
-            return { message: "Add blocks to define your system" };
+
+    // ---- Copy / Paste ----
+    onKeyDown(e) {
+        if (e.key === 'Escape') {
+            if (this.connectingFrom) this.cancelConnection();
+            this.hideArrowMenu();
+            this.clearSelection();
         }
-        
-        // Build blocks structure without internal fields (id, position not relevant for LLM)
-        const blocks = this.placedBlocks.map(b => ({
-            type: b.type,
-            name: b.data?.name || b.type,
-            ...this.filterRelevantData(b.data)
-        }));
-        
-        // Build connections with meaningful names
-        const connections = this.connections.map(c => {
-            const fromBlock = this.placedBlocks.find(b => b.id === c.from);
-            const toBlock = this.placedBlocks.find(b => b.id === c.to);
-            return {
-                from: fromBlock?.data?.name || fromBlock?.type,
-                to: toBlock?.data?.name || toBlock?.type,
-                relationship: c.relationship
-            };
+        if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); this.copySelected(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); this.paste(); }
+        if ((e.key === 'Delete' || e.key === 'Backspace') && (this.selectedBlocks.size > 0 || this.selectedConnections.size > 0)) {
+            e.preventDefault(); this.deleteSelected();
+        }
+        if (e.key === 'Enter' && this.selectedConnections.size === 1) {
+            e.preventDefault();
+            const conn = this.connections.find(c => c.id === Array.from(this.selectedConnections)[0]);
+            if (conn) this.editConnection(conn);
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); this.selectAll(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); this.undo(); }
+        if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') || ((e.ctrlKey || e.metaKey) && e.key === 'y')) {
+            e.preventDefault(); this.redo();
+        }
+    }
+
+    copySelected() {
+        const hasBlocks = this.selectedBlocks.size > 0;
+        const hasConns = this.selectedConnections.size > 0;
+        if (!hasBlocks && !hasConns) return;
+        const blockIds = Array.from(this.selectedBlocks);
+        const blocks = blockIds.map(id => {
+            const b = this.placedBlocks.find(p => p.id === id);
+            return b ? { id, type: b.type, data: Utils.deepClone(b.data), x: b.x, y: b.y } : null;
+        }).filter(Boolean);
+        const connMap = new Map();
+        this.selectedConnections.forEach(id => {
+            const c = this.connections.find(x => x.id === id);
+            if (c) connMap.set(id, { from: c.from, to: c.to, relationship: c.relationship });
         });
-        
-        // Build natural language description
-        const description = this.buildDescription(blocks, connections);
-        
-        return {
-            instruction: description,
-            blocks: blocks,
-            relationships: connections,
-            summary: {
-                totalBlocks: blocks.length,
-                totalRelationships: connections.length
+        this.connections.forEach(c => {
+            if (blockIds.includes(c.from) && blockIds.includes(c.to) && !connMap.has(c.id)) {
+                connMap.set(c.id, { from: c.from, to: c.to, relationship: c.relationship });
             }
+        });
+        const conns = Array.from(connMap.values());
+        this.clipboard = { blocks, connections: conns, bounds: this.getSelectionBounds(blocks) };
+        this.pasteCount = 0;
+        const bt = blocks.length ? `${blocks.length} block${blocks.length > 1 ? 's' : ''}` : '';
+        const ct = conns.length ? `${conns.length} connection${conns.length > 1 ? 's' : ''}` : '';
+        this.showToast(`Copied ${bt}${bt && ct ? ' and ' : ''}${ct}`);
+    }
+
+    paste() {
+        if (!this.clipboard?.blocks.length) return;
+        this.pushUndoState();
+        this.pasteCount++;
+        this.clearSelection();
+        const rect = this.gridCanvas.getBoundingClientRect();
+        const vcx = (this.gridCanvas.scrollLeft + rect.width / 2) / this.zoomLevel;
+        const vcy = (this.gridCanvas.scrollTop + rect.height / 2) / this.zoomLevel;
+        const ox = vcx - this.clipboard.bounds.centerX + (this.pasteCount * this.clipboardOffset.x);
+        const oy = vcy - this.clipboard.bounds.centerY + (this.pasteCount * this.clipboardOffset.y);
+        const idMap = new Map();
+        const newIds = [];
+        this.clipboard.blocks.forEach(b => {
+            const nb = this.createPlacedBlock({ type: b.type, data: b.data }, this.snapToGrid(b.x + ox), this.snapToGrid(b.y + oy));
+            if (nb) { idMap.set(b.id, nb.dataset.blockId); newIds.push(nb.dataset.blockId); }
+        });
+        let cc = 0;
+        this.clipboard.connections?.forEach(c => {
+            const nf = idMap.get(c.from), nt = idMap.get(c.to);
+            if (nf && nt) { this.createConnection(nf, nt, c.relationship); cc++; }
+        });
+        newIds.forEach(id => this.selectBlock(id));
+        const ct = cc ? ` and ${cc} connection${cc > 1 ? 's' : ''}` : '';
+        this.showToast(`Pasted ${newIds.length} block${newIds.length > 1 ? 's' : ''}${ct}`);
+    }
+
+    getSelectionBounds(blocks) {
+        if (!blocks.length) return { centerX: 0, centerY: 0 };
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        blocks.forEach(b => {
+            minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + 200); maxY = Math.max(maxY, b.y + 80);
+        });
+        return { minX, minY, maxX, maxY, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2 };
+    }
+
+    deleteSelected() {
+        const hb = this.selectedBlocks.size > 0, hc = this.selectedConnections.size > 0;
+        if (!hb && !hc) return;
+        this.pushUndoState();
+        let dc = 0;
+        this.selectedConnections.forEach(id => { this.deleteConnection(id); dc++; });
+        this.selectedConnections.clear();
+        let db = 0;
+        this.selectedBlocks.forEach(id => { this.deletePlacedBlock(id, false); db++; });
+        this.selectedBlocks.clear();
+        const bt = db ? `${db} block${db > 1 ? 's' : ''}` : '';
+        const ct = dc ? `${dc} connection${dc > 1 ? 's' : ''}` : '';
+        this.showToast(`Deleted ${bt}${bt && ct ? ' and ' : ''}${ct}`);
+    }
+
+    // ---- Toast ----
+    showToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'canvas-toast';
+        toast.textContent = message;
+        toast.style.cssText = `position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 20px;border-radius:6px;border:1px solid #333;font-size:13px;z-index:3000;animation:toast-appear 0.2s ease;`;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            toast.style.animation = 'toast-disappear 0.2s ease';
+            setTimeout(() => toast.remove(), 200);
+        }, 2000);
+    }
+
+    // ---- Output ----
+    updateOutput() {
+        this.canvasOutput.textContent = JSON.stringify(this.generateSystemJSON(), null, 2);
+    }
+
+    generateSystemJSON() {
+        if (!this.placedBlocks.length) return { message: "Add blocks to define your system" };
+        const blocks = this.placedBlocks.map(b => ({
+            type: b.type, name: Utils.displayName(b), ...this.filterRelevantData(b.data)
+        }));
+        const connections = this.connections.map(c => {
+            const from = this.placedBlocks.find(b => b.id === c.from);
+            const to = this.placedBlocks.find(b => b.id === c.to);
+            return { from: Utils.displayName(from), to: Utils.displayName(to), relationship: c.relationship };
+        });
+        return {
+            instruction: this.buildDescription(blocks, connections),
+            blocks, relationships: connections,
+            summary: { totalBlocks: blocks.length, totalRelationships: connections.length }
         };
     }
-    
-    // Filter only data fields relevant for code generation
+
     filterRelevantData(data) {
         if (!data) return {};
-        
-        const relevantFields = {};
-        
-        // Common fields
-        if (data.purpose) relevantFields.purpose = data.purpose;
-        
-        // Type-specific fields
-        if (data.parameters !== undefined && data.parameters !== '') {
-            relevantFields.parameters = data.parameters;
-        }
-        if (data.returns !== undefined && data.returns !== '') {
-            relevantFields.returns = data.returns;
-        }
-        if (data.varType !== undefined && data.varType !== '') {
-            relevantFields.type = data.varType;
-        }
-        if (data.value !== undefined && data.value !== '') {
-            relevantFields.initialValue = data.value;
-        }
-        if (data.module) relevantFields.module = data.module;
-        if (data.items) relevantFields.imports = data.items;
-        if (data.customType) relevantFields.customType = data.customType;
-        
-        return relevantFields;
+        const out = {};
+        if (data.purpose) out.purpose = data.purpose;
+        if (data.parameters) out.parameters = data.parameters;
+        if (data.returns) out.returns = data.returns;
+        if (data.varType) out.type = data.varType;
+        if (data.value) out.initialValue = data.value;
+        if (data.module) out.module = data.module;
+        if (data.items) out.imports = data.items;
+        if (data.customType) out.customType = data.customType;
+        return out;
     }
-    
-    // Build a natural language description of the system
+
     buildDescription(blocks, connections) {
-        let description = "Generate code with the following structure:\n\n";
-        
-        // Group blocks by type
-        const byType = {};
-        blocks.forEach(block => {
-            if (!byType[block.type]) byType[block.type] = [];
-            byType[block.type].push(block);
-        });
-        
-        // Describe each block
-        blocks.forEach(block => {
-            description += this.describeBlock(block);
-        });
-        
-        // Describe relationships
-        if (connections.length > 0) {
-            description += '\nRelationships:\n';
-            connections.forEach(conn => {
-                description += `  - ${conn.from} ${conn.relationship} ${conn.to}\n`;
-            });
+        let desc = "Generate code with the following structure:\n\n";
+        blocks.forEach(b => { desc += this.describeBlock(b); });
+        if (connections.length) {
+            desc += '\nRelationships:\n';
+            connections.forEach(c => { desc += `  - ${c.from} ${c.relationship} ${c.to}\n`; });
         }
-        
-        description += '\nPlease implement clean, well-documented code following best practices.';
-        
-        return description;
-    }
-    
-    describeBlock(block) {
-        let desc = '';
-        
-        switch (block.type) {
-            case 'class':
-                desc += `Class "${block.name}"`;
-                if (block.purpose) desc += ` - ${block.purpose}`;
-                desc += '\n';
-                break;
-                
-            case 'function':
-                desc += `  Function "${block.name}"`;
-                if (block.parameters) desc += `(${block.parameters})`;
-                else desc += '()';
-                if (block.returns) desc += ` -> ${block.returns}`;
-                if (block.purpose) desc += ` - ${block.purpose}`;
-                desc += '\n';
-                break;
-                
-            case 'variable':
-                desc += `  Variable "${block.name}"`;
-                if (block.type) desc += `: ${block.type}`;
-                if (block.initialValue) desc += ` = ${block.initialValue}`;
-                if (block.purpose) desc += ` - ${block.purpose}`;
-                desc += '\n';
-                break;
-                
-            case 'import':
-                desc += `Import "${block.name}"`;
-                if (block.imports) desc += ` { ${block.imports} }`;
-                if (block.purpose) desc += ` - ${block.purpose}`;
-                desc += '\n';
-                break;
-                
-            case 'custom':
-                desc += `${block.customType || 'Component'} "${block.name}"`;
-                if (block.purpose) desc += ` - ${block.purpose}`;
-                desc += '\n';
-                break;
-                
-            default:
-                desc += `${block.type} "${block.name}"\n`;
-        }
-        
+        desc += '\nPlease implement clean, well-documented code following best practices.';
         return desc;
     }
-    
+
+    describeBlock(block) {
+        switch (block.type) {
+            case 'class': return `Class "${block.name}"${block.purpose ? ` - ${block.purpose}` : ''}\n`;
+            case 'function': return `  Function "${block.name}"(${block.parameters || ''})${block.returns ? ` -> ${block.returns}` : ''}${block.purpose ? ` - ${block.purpose}` : ''}\n`;
+            case 'variable': return `  Variable "${block.name}"${block.type ? `: ${block.type}` : ''}${block.initialValue ? ` = ${block.initialValue}` : ''}${block.purpose ? ` - ${block.purpose}` : ''}\n`;
+            case 'import': return `Import "${block.name}"${block.imports ? ` { ${block.imports} }` : ''}${block.purpose ? ` - ${block.purpose}` : ''}\n`;
+            case 'custom': return `${block.customType || 'Component'} "${block.name}"${block.purpose ? ` - ${block.purpose}` : ''}\n`;
+            default: return `${block.type} "${block.name}"\n`;
+        }
+    }
+
     copyOutput() {
-        const text = this.canvasOutput.textContent;
-        navigator.clipboard.writeText(text).then(() => {
-            const btn = document.getElementById('copyOutputBtn');
-            btn.textContent = 'Copied!';
-            setTimeout(() => btn.textContent = 'Copy', 1500);
+        Clipboard.copy(this.canvasOutput.textContent, document.getElementById('copyOutputBtn'));
+    }
+
+    // ---- Persistence ----
+    savePlacedBlocks() {
+        Storage.set('codeblocks_canvas_placed', this.placedBlocks.map(b => ({ id: b.id, type: b.type, data: b.data, x: b.x, y: b.y })));
+    }
+
+    saveConnections() {
+        Storage.set('codeblocks_canvas_connections', this.connections);
+    }
+
+    loadPlacedBlocks() {
+        const blocks = Storage.get('codeblocks_canvas_placed');
+        if (!blocks) return;
+        this.blockIdMapping = {};
+        blocks.forEach(b => {
+            const nb = this.createPlacedBlock({ type: b.type, data: b.data }, b.x, b.y);
+            this.blockIdMapping[b.id] = nb.dataset.blockId;
         });
     }
-    
-    // Persistence
-    savePlacedBlocks() {
-        try {
-            const data = this.placedBlocks.map(b => ({
-                id: b.id,
-                type: b.type,
-                data: b.data,
-                x: b.x,
-                y: b.y
-            }));
-            localStorage.setItem('codeblocks_canvas_placed', JSON.stringify(data));
-        } catch (e) {
-            console.warn('Failed to save placed blocks:', e);
-        }
-    }
-    
-    saveConnections() {
-        try {
-            localStorage.setItem('codeblocks_canvas_connections', JSON.stringify(this.connections));
-        } catch (e) {
-            console.warn('Failed to save connections:', e);
-        }
-    }
-    
-    loadPlacedBlocks() {
-        try {
-            const saved = localStorage.getItem('codeblocks_canvas_placed');
-            if (saved) {
-                const blocks = JSON.parse(saved);
-                // Create a mapping of old IDs to new IDs
-                this.blockIdMapping = {};
-                
-                blocks.forEach(block => {
-                    const newBlock = this.createPlacedBlock(
-                        { type: block.type, data: block.data },
-                        block.x,
-                        block.y
-                    );
-                    // Map old ID to new ID for connection restoration
-                    this.blockIdMapping[block.id] = newBlock.dataset.blockId;
-                });
-            }
-        } catch (e) {
-            console.warn('Failed to load placed blocks:', e);
-        }
-    }
-    
+
     loadConnections() {
-        try {
-            const saved = localStorage.getItem('codeblocks_canvas_connections');
-            if (saved) {
-                const loadedConnections = JSON.parse(saved);
-                
-                // Remap connection IDs if we have a mapping from loadPlacedBlocks
-                if (this.blockIdMapping) {
-                    this.connections = loadedConnections.map(conn => ({
-                        ...conn,
-                        from: this.blockIdMapping[conn.from] || conn.from,
-                        to: this.blockIdMapping[conn.to] || conn.to
-                    }));
-                    this.blockIdMapping = null; // Clear mapping after use
-                } else {
-                    this.connections = loadedConnections;
-                }
-                
-                this.connectionIdCounter = this.connections.length;
-                this.renderArrows();
-                this.updateOutput();
-            }
-        } catch (e) {
-            console.warn('Failed to load connections:', e);
+        const loaded = Storage.get('codeblocks_canvas_connections');
+        if (!loaded) return;
+        if (this.blockIdMapping) {
+            this.connections = loaded.map(c => ({ ...c, from: this.blockIdMapping[c.from] || c.from, to: this.blockIdMapping[c.to] || c.to }));
+            this.blockIdMapping = null;
+        } else {
+            this.connections = loaded;
         }
+        this.connectionIdCounter = this.connections.length;
+        this.renderArrows();
+        this.updateOutput();
     }
-    
-    // ========== PROJECTS ==========
-    
+
+    saveMinimizedState(panel, isMinimized) {
+        const states = Storage.get('codeblocks_panel_states', {});
+        states[panel] = isMinimized;
+        Storage.set('codeblocks_panel_states', states);
+    }
+
+    restoreMinimizedStates() {
+        const states = Storage.get('codeblocks_panel_states', {});
+        if (states.projects) document.getElementById('projectsPanel')?.classList.add('minimized');
+        if (states.savedBlocks) document.getElementById('savedBlocksPanel')?.classList.add('minimized');
+        if (states.output) document.getElementById('outputPanel')?.classList.add('minimized');
+    }
+
+    loadSavedBlocks() {
+        return Storage.get('codeblocks_saved', []);
+    }
+
+    // ---- Projects ----
     loadProjects() {
-        try {
-            const saved = localStorage.getItem('codeblocks_canvas_projects');
-            return saved ? JSON.parse(saved) : [];
-        } catch (e) {
-            console.warn('Failed to load projects:', e);
-            return [];
-        }
+        return Storage.get('codeblocks_canvas_projects', []);
     }
-    
+
     saveProjects() {
-        try {
-            localStorage.setItem('codeblocks_canvas_projects', JSON.stringify(this.projects));
-        } catch (e) {
-            console.warn('Failed to save projects:', e);
-        }
+        Storage.set('codeblocks_canvas_projects', this.projects);
     }
-    
+
     renderProjects() {
         const container = document.getElementById('canvasProjectsContent');
         if (!container) return;
-        
         container.innerHTML = '';
-        
-        if (this.projects.length === 0) {
-            container.innerHTML = `
-                <div class="canvas-projects-empty">
-                    No saved projects<br>
-                    <small>Save your canvas layout here</small>
-                </div>
-            `;
+        if (!this.projects.length) {
+            container.innerHTML = `<div class="canvas-projects-empty">No saved projects<br><small>Save your canvas layout here</small></div>`;
             return;
         }
-        
         this.projects.forEach((project, index) => {
             const el = document.createElement('div');
             el.className = `project-item ${project.id === this.currentProjectId ? 'active' : ''}`;
             el.dataset.index = index;
-            
             const date = new Date(project.savedAt).toLocaleDateString();
-            const blockCount = project.blocks?.length || 0;
-            const connCount = project.connections?.length || 0;
-            
+            const bc = project.blocks?.length || 0;
+            const cc = project.connections?.length || 0;
             el.innerHTML = `
                 <div class="project-name">${project.name}</div>
-                <div class="project-meta">
-                    <span>${blockCount} blocks, ${connCount} connections</span>
-                    <span>${date}</span>
-                </div>
+                <div class="project-meta"><span>${bc} blocks, ${cc} connections</span><span>${date}</span></div>
                 <div class="project-actions">
                     <button class="project-rename" title="Rename project">✏️</button>
-                    <button class="project-edit" title="Edit project (save current canvas to this project)">💾</button>
+                    <button class="project-edit" title="Edit project">💾</button>
                     <button class="project-delete" title="Delete project">🗑️</button>
                 </div>
             `;
-            
-            // Click to load project
             el.addEventListener('click', (e) => {
-                if (e.target.classList.contains('project-delete')) {
-                    e.stopPropagation();
-                    this.deleteProject(index);
-                } else if (e.target.classList.contains('project-rename')) {
-                    e.stopPropagation();
-                    this.renameProject(index);
-                } else if (e.target.classList.contains('project-edit')) {
-                    e.stopPropagation();
-                    this.editProject(index);
-                } else {
-                    // Check if canvas has unsaved changes
+                if (e.target.classList.contains('project-delete')) { e.stopPropagation(); this.deleteProject(index); }
+                else if (e.target.classList.contains('project-rename')) { e.stopPropagation(); this.renameProject(index); }
+                else if (e.target.classList.contains('project-edit')) { e.stopPropagation(); this.editProject(index); }
+                else {
                     if (this.placedBlocks.length > 0) {
-                        const confirmed = confirm(
-                            `Loading "${project.name}" will replace the current canvas content.\n\n` +
-                            `You have ${this.placedBlocks.length} block(s) on the canvas that will be cleared.\n\n` +
-                            `Do you want to continue?`
-                        );
+                        const confirmed = confirm(`Loading "${project.name}" will replace the current canvas content.\n\nYou have ${this.placedBlocks.length} block(s) on the canvas that will be cleared.\n\nDo you want to continue?`);
                         if (!confirmed) return;
                     }
                     this.loadProject(index);
                 }
             });
-            
             container.appendChild(el);
         });
     }
-    
+
     saveCurrentProject() {
         const name = prompt('Enter project name:', `Project ${this.projects.length + 1}`);
-        if (!name || !name.trim()) return;
-        
+        if (!name?.trim()) return;
         const project = {
-            id: 'proj-' + Date.now(),
-            name: name.trim(),
-            blocks: this.placedBlocks.map(b => ({
-                id: b.id,
-                type: b.type,
-                data: JSON.parse(JSON.stringify(b.data)), // Deep copy
-                x: b.x,
-                y: b.y
-            })),
-            connections: JSON.parse(JSON.stringify(this.connections)), // Deep copy
+            id: 'proj-' + Date.now(), name: name.trim(),
+            blocks: this.placedBlocks.map(b => ({ id: b.id, type: b.type, data: Utils.deepClone(b.data), x: b.x, y: b.y })),
+            connections: Utils.deepClone(this.connections),
             savedAt: new Date().toISOString()
         };
-        
         this.projects.push(project);
         this.currentProjectId = project.id;
         this.saveProjects();
         this.renderProjects();
     }
-    
+
     loadProject(index) {
         const project = this.projects[index];
         if (!project) return;
-        
-        // Clear current canvas
         this.clearCanvasWithoutConfirm();
-        
-        // Create ID mapping for blocks (old ID -> new ID)
-        const blockIdMap = new Map();
-        
-        // Load blocks with preserved IDs if possible, otherwise create new ones
-        project.blocks.forEach(block => {
-            const newBlock = this.createPlacedBlock(
-                { type: block.type, data: JSON.parse(JSON.stringify(block.data)) },
-                block.x,
-                block.y,
-                block.id // Try to preserve original ID
-            );
-            if (newBlock) {
-                blockIdMap.set(block.id, newBlock.dataset.blockId);
-            }
+        const idMap = new Map();
+        project.blocks.forEach(b => {
+            const nb = this.createPlacedBlock({ type: b.type, data: Utils.deepClone(b.data) }, b.x, b.y, b.id);
+            if (nb) idMap.set(b.id, nb.dataset.blockId);
         });
-        
-        // Load connections with updated block IDs
-        this.connections = (project.connections || []).map(conn => ({
-            ...conn,
-            from: blockIdMap.get(conn.from) || conn.from,
-            to: blockIdMap.get(conn.to) || conn.to
-        })).filter(conn => {
-            // Only keep connections where both blocks exist
-            const fromExists = this.placedBlocks.some(b => b.id === conn.from);
-            const toExists = this.placedBlocks.some(b => b.id === conn.to);
-            return fromExists && toExists;
-        });
-        
+        this.connections = (project.connections || []).map(c => ({
+            ...c, from: idMap.get(c.from) || c.from, to: idMap.get(c.to) || c.to
+        })).filter(c => this.placedBlocks.some(b => b.id === c.from) && this.placedBlocks.some(b => b.id === c.to));
         this.saveConnections();
         this.renderArrows();
-        
         this.currentProjectId = project.id;
         this.renderProjects();
         this.updateOutput();
     }
-    
+
     deleteProject(index) {
         if (!confirm('Delete this project?')) return;
-        
-        const project = this.projects[index];
-        if (project.id === this.currentProjectId) {
-            this.currentProjectId = null;
-        }
-        
+        if (this.projects[index].id === this.currentProjectId) this.currentProjectId = null;
         this.projects.splice(index, 1);
         this.saveProjects();
         this.renderProjects();
         this.showToast('Project deleted');
     }
-    
+
     renameProject(index) {
         const project = this.projects[index];
         if (!project) return;
-        
         const newName = prompt('Enter new project name:', project.name);
-        if (!newName || !newName.trim()) return;
-        
+        if (!newName?.trim()) return;
         project.name = newName.trim();
         project.savedAt = new Date().toISOString();
         this.saveProjects();
         this.renderProjects();
         this.showToast('Project renamed');
     }
-    
+
     editProject(index) {
         const project = this.projects[index];
         if (!project) return;
-        
-        const confirmed = confirm(
-            `Update "${project.name}" with the current canvas content?\n\n` +
-            `This will replace the project's saved blocks and connections.\n\n` +
-            `Are you sure?`
-        );
+        const confirmed = confirm(`Update "${project.name}" with the current canvas content?\n\nThis will replace the project's saved blocks and connections.\n\nAre you sure?`);
         if (!confirmed) return;
-        
-        // Update project with current canvas state
-        project.blocks = this.placedBlocks.map(b => ({
-            id: b.id,
-            type: b.type,
-            data: JSON.parse(JSON.stringify(b.data)), // Deep copy
-            x: b.x,
-            y: b.y
-        }));
-        project.connections = JSON.parse(JSON.stringify(this.connections)); // Deep copy
+        project.blocks = this.placedBlocks.map(b => ({ id: b.id, type: b.type, data: Utils.deepClone(b.data), x: b.x, y: b.y }));
+        project.connections = Utils.deepClone(this.connections);
         project.savedAt = new Date().toISOString();
-        
         this.currentProjectId = project.id;
         this.saveProjects();
         this.renderProjects();
         this.showToast('Project updated');
     }
-    
+
     clearCanvasWithoutConfirm() {
-        this.placedBlocks.forEach(block => {
-            const el = document.querySelector(`[data-block-id="${block.id}"]`);
-            if (el) el.remove();
-        });
-        
+        this.placedBlocks.forEach(b => document.querySelector(`[data-block-id="${b.id}"]`)?.remove());
         this.placedBlocks = [];
         this.connections = [];
         this.gridCanvas.classList.remove('has-blocks');
-        
         this.savePlacedBlocks();
         this.saveConnections();
         this.renderArrows();
         this.updateOutput();
+    }
+}
+
+// ========== Manager Classes ==========
+
+class ZoomManager {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.level = 1;
+        this.min = 0.25;
+        this.max = 3;
+        this.step = 0.25;
+    }
+
+    bindControls() {
+        document.getElementById('zoomInBtn')?.addEventListener('click', () => this.zoomIn());
+        document.getElementById('zoomOutBtn')?.addEventListener('click', () => this.zoomOut());
+        document.getElementById('zoomResetBtn')?.addEventListener('click', () => this.reset());
+    }
+
+    zoomIn() {
+        if (this.level < this.max) { this.level = Math.min(this.max, this.level + this.step); this.apply(); }
+    }
+
+    zoomOut() {
+        if (this.level > this.min) { this.level = Math.max(this.min, this.level - this.step); this.apply(); }
+    }
+
+    reset() { this.level = 1; this.apply(); }
+
+    apply() {
+        const el = document.getElementById('zoomLevel');
+        if (el) el.textContent = Math.round(this.level * 100) + '%';
+        if (this.canvas.canvasContent) {
+            this.canvas.canvasContent.style.transform = `scale(${this.level})`;
+            this.canvas.canvasContent.style.transformOrigin = '0 0';
+        }
+        this.updateArrowLayerSize();
+        this.canvas.renderArrows();
+    }
+
+    updateArrowLayerSize() {
+        this.canvas.arrowLayer.style.width = '3000px';
+        this.canvas.arrowLayer.style.height = '2000px';
+    }
+
+    onWheel(e) {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        let nz = this.level * (1 + e.deltaY * 0.005);
+        nz = Math.max(this.min, Math.min(this.max, nz));
+        this.level = nz;
+        this.apply();
+    }
+
+    screenToCanvas(sx, sy) {
+        const r = this.canvas.gridCanvas.getBoundingClientRect();
+        return {
+            x: (sx - r.left + this.canvas.gridCanvas.scrollLeft) / this.level,
+            y: (sy - r.top + this.canvas.gridCanvas.scrollTop) / this.level
+        };
+    }
+
+    canvasToScreen(cx, cy) {
+        const r = this.canvas.gridCanvas.getBoundingClientRect();
+        return {
+            x: cx * this.level + r.left - this.canvas.gridCanvas.scrollLeft,
+            y: cy * this.level + r.top - this.canvas.gridCanvas.scrollTop
+        };
+    }
+}
+
+class SelectionManager {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.isSelecting = false;
+        this.selectStart = { x: 0, y: 0 };
+        this.selectedBlocks = new Set();
+        this.selectedConnections = new Set();
+        this.isDraggingSelection = false;
+        this.selectionDragStart = { x: 0, y: 0 };
+        this.selectionInitialPositions = new Map();
+    }
+
+    onMouseDown(e) {
+        const blockEl = e.target.closest('.placed-block');
+        if (blockEl) {
+            const blockId = blockEl.dataset.blockId;
+            if (!e.ctrlKey && !e.metaKey && !this.selectedBlocks.has(blockId)) this.clear();
+            if (e.ctrlKey || e.metaKey) this.toggleBlockSelection(blockId);
+            else this.selectBlock(blockId);
+            if (this.selectedBlocks.size > 0) {
+                this.isDraggingSelection = true;
+                this.selectionDragStart = { x: e.clientX, y: e.clientY };
+                this.saveInitialPositions();
+            }
+            return;
+        }
+        const isCanvas = e.target === this.canvas.gridCanvas || e.target === this.canvas.canvasContent ||
+                         e.target === this.canvas.arrowLayer || e.target.classList.contains('canvas-placeholder') ||
+                         e.target.closest('.canvas-placeholder');
+        if (!isCanvas) return;
+        if (e.button === 0) {
+            this.isSelecting = true;
+            this.selectStart = this.canvas.screenToCanvas(e.clientX, e.clientY);
+            if (!e.ctrlKey && !e.metaKey) this.clear();
+            this.updateBox(this.selectStart.x, this.selectStart.y);
+            this.canvas.selectionBox.classList.remove('hidden');
+        }
+    }
+
+    onMouseUp(e) {
+        if (this.isSelecting) { this.isSelecting = false; this.canvas.selectionBox.classList.add('hidden'); }
+        if (this.isDraggingSelection) {
+            this.isDraggingSelection = false;
+            this.canvas.savePlacedBlocks();
+            this.canvas.updateOutput();
+        }
+    }
+
+    updateBox(cx, cy) {
+        const left = Math.min(this.selectStart.x, cx);
+        const top = Math.min(this.selectStart.y, cy);
+        const w = Math.abs(cx - this.selectStart.x);
+        const h = Math.abs(cy - this.selectStart.y);
+        this.canvas.selectionBox.style.left = `${left * this.canvas.zoomLevel}px`;
+        this.canvas.selectionBox.style.top = `${top * this.canvas.zoomLevel}px`;
+        this.canvas.selectionBox.style.width = `${w * this.canvas.zoomLevel}px`;
+        this.canvas.selectionBox.style.height = `${h * this.canvas.zoomLevel}px`;
+    }
+
+    updateFromBox() {
+        const box = {
+            left: Math.min(this.selectStart.x, parseFloat(this.canvas.selectionBox.style.left) / this.canvas.zoomLevel),
+            top: Math.min(this.selectStart.y, parseFloat(this.canvas.selectionBox.style.top) / this.canvas.zoomLevel),
+            right: Math.max(this.selectStart.x, (parseFloat(this.canvas.selectionBox.style.left) + parseFloat(this.canvas.selectionBox.style.width)) / this.canvas.zoomLevel),
+            bottom: Math.max(this.selectStart.y, (parseFloat(this.canvas.selectionBox.style.top) + parseFloat(this.canvas.selectionBox.style.height)) / this.canvas.zoomLevel)
+        };
+        this.canvas.placedBlocks.forEach(b => {
+            if (!(b.x > box.right || b.x + 200 < box.left || b.y > box.bottom || b.y + 80 < box.top)) {
+                this.selectBlock(b.id);
+            }
+        });
+    }
+
+    selectBlock(id) {
+        this.selectedBlocks.add(id);
+        document.querySelector(`[data-block-id="${id}"]`)?.classList.add('selected');
+    }
+
+    deselectBlock(id) {
+        this.selectedBlocks.delete(id);
+        document.querySelector(`[data-block-id="${id}"]`)?.classList.remove('selected');
+    }
+
+    toggleBlockSelection(id) {
+        this.selectedBlocks.has(id) ? this.deselectBlock(id) : this.selectBlock(id);
+    }
+
+    clear() {
+        this.selectedBlocks.forEach(id => document.querySelector(`[data-block-id="${id}"]`)?.classList.remove('selected'));
+        this.selectedBlocks.clear();
+        this.selectedConnections.clear();
+        this.canvas.renderArrows();
+    }
+
+    selectConnection(id) { this.selectedConnections.add(id); this.canvas.renderArrows(); }
+    deselectConnection(id) { this.selectedConnections.delete(id); this.canvas.renderArrows(); }
+    toggleConnectionSelection(id) { this.selectedConnections.has(id) ? this.deselectConnection(id) : this.selectConnection(id); }
+
+    saveInitialPositions() {
+        this.selectionInitialPositions.clear();
+        this.selectedBlocks.forEach(id => {
+            const b = this.canvas.placedBlocks.find(p => p.id === id);
+            if (b) this.selectionInitialPositions.set(id, { x: b.x, y: b.y });
+        });
+    }
+
+    selectAll() { this.canvas.placedBlocks.forEach(b => this.selectBlock(b.id)); }
+
+    startMultiDrag(e, draggedBlockId) {
+        this.isDraggingSelection = true;
+        this.selectionDragStart = { x: e.clientX, y: e.clientY };
+        this.saveInitialPositions();
+        this.selectedBlocks.forEach(id => document.querySelector(`[data-block-id="${id}"]`)?.classList.add('dragging'));
+
+        const onMove = (moveEvent) => {
+            if (!this.isDraggingSelection) return;
+            const dx = (moveEvent.clientX - this.selectionDragStart.x) / this.canvas.zoomLevel;
+            const dy = (moveEvent.clientY - this.selectionDragStart.y) / this.canvas.zoomLevel;
+            const dzr = this.canvas.deleteZone.getBoundingClientRect();
+            const over = moveEvent.clientY >= dzr.top && moveEvent.clientX >= dzr.left && moveEvent.clientX <= dzr.right;
+            this.canvas.deleteZone.classList.toggle('drag-over', over);
+            document.body.classList.toggle('delete-zone-active', over);
+            this.selectedBlocks.forEach(id => {
+                const b = this.canvas.placedBlocks.find(p => p.id === id);
+                const ip = this.selectionInitialPositions.get(id);
+                if (b && ip) {
+                    b.x = ip.x + dx; b.y = ip.y + dy;
+                    b.element.style.left = `${b.x}px`;
+                    b.element.style.top = `${b.y}px`;
+                }
+            });
+            this.canvas.renderArrows();
+        };
+
+        const onUp = (upEvent) => {
+            if (!this.isDraggingSelection) return;
+            const dzr = this.canvas.deleteZone.getBoundingClientRect();
+            if (upEvent.clientY >= dzr.top) {
+                this.canvas.deleteSelected();
+            } else {
+                this.selectedBlocks.forEach(id => {
+                    const b = this.canvas.placedBlocks.find(p => p.id === id);
+                    if (b) { b.x = this.canvas.snapToGrid(b.x); b.y = this.canvas.snapToGrid(b.y); b.element.style.left = `${b.x}px`; b.element.style.top = `${b.y}px`; }
+                });
+                this.canvas.savePlacedBlocks();
+                this.canvas.updateOutput();
+            }
+            this.selectedBlocks.forEach(id => document.querySelector(`[data-block-id="${id}"]`)?.classList.remove('dragging'));
+            this.isDraggingSelection = false;
+            this.canvas.deleteZone.classList.remove('drag-over');
+            document.body.classList.remove('delete-zone-active');
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }
+}
+
+class UndoManager {
+    constructor(canvas) {
+        this.canvas = canvas;
+        this.undoStack = [];
+        this.redoStack = [];
+        this.maxSize = 50;
+    }
+
+    getState() {
+        return {
+            blocks: this.canvas.placedBlocks.map(b => ({
+                id: b.id, type: b.type, data: Utils.deepClone(b.data), x: b.x, y: b.y
+            })),
+            connections: Utils.deepClone(this.canvas.connections),
+            blockIdCounter: this.canvas.blockIdCounter,
+            connectionIdCounter: this.canvas.connectionIdCounter
+        };
+    }
+
+    push() {
+        this.undoStack.push(this.getState());
+        if (this.undoStack.length > this.maxSize) this.undoStack.shift();
+        this.redoStack = [];
+    }
+
+    undo() {
+        if (!this.undoStack.length) { this.canvas.showToast('Nothing to undo'); return; }
+        this.redoStack.push(this.getState());
+        this.canvas.restoreState(this.undoStack.pop());
+        this.canvas.showToast('Undo');
+    }
+
+    redo() {
+        if (!this.redoStack.length) { this.canvas.showToast('Nothing to redo'); return; }
+        this.undoStack.push(this.getState());
+        this.canvas.restoreState(this.redoStack.pop());
+        this.canvas.showToast('Redo');
     }
 }
 
@@ -2412,13 +1294,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.gridCanvas = new GridCanvas();
     window.gridCanvas.loadPlacedBlocks();
     window.gridCanvas.loadConnections();
-    
-    // Escape key to cancel connection, close arrow menu, or clear selection
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (window.gridCanvas.connectingFrom) {
-                window.gridCanvas.cancelConnection();
-            }
+            if (window.gridCanvas.connectingFrom) window.gridCanvas.cancelConnection();
             window.gridCanvas.hideArrowMenu();
             window.gridCanvas.clearSelection();
         }
